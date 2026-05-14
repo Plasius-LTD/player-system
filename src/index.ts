@@ -40,11 +40,13 @@ export interface PlayerSystemSessionState {
 
 export const PLAYER_SYSTEM_PACKAGE = "@plasius/player-system";
 export const PLAYER_SYSTEM_ENV_PREFIX = "PLAYER_SYSTEM";
-export const PLAYER_SYSTEM_FEATURE_FLAG_ID = "isekai.player-system.runtime.enabled";
+export const PLAYER_SYSTEM_PACKAGES_FEATURE_FLAG_ID =
+  "isekai.player-system.packages.enabled";
+export const PLAYER_SYSTEM_FEATURE_FLAG_ID = PLAYER_SYSTEM_PACKAGES_FEATURE_FLAG_ID;
 
 export const packageDescriptor: PackageDescriptor = Object.freeze({
   packageName: PLAYER_SYSTEM_PACKAGE,
-  featureFlagId: PLAYER_SYSTEM_FEATURE_FLAG_ID,
+  featureFlagId: PLAYER_SYSTEM_PACKAGES_FEATURE_FLAG_ID,
   envPrefix: PLAYER_SYSTEM_ENV_PREFIX,
   summary:
     "Non-rendering Player System orchestration contracts and helpers for Plasius game experiences.",
