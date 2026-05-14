@@ -2,6 +2,7 @@ import {
   PLAYER_SYSTEM_PACKAGES_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_FEATURE_FLAG_ID,
   createPlayerSystemSessionState,
+  isPlayerSystemModule,
   isPlayerSystemMode,
   packageDescriptor,
 } from "../src/index.js";
@@ -28,8 +29,40 @@ describe("@plasius/player-system", () => {
     expect(state.preferenceSignals).toEqual([]);
   });
 
+  it("preserves explicit module and preference signals", () => {
+    const state = createPlayerSystemSessionState({
+      sessionId: "awakening-002",
+      mode: "focused",
+      combatSafe: false,
+      activeModule: "missions",
+      preferenceSignals: [
+        {
+          signalId: "sig-1",
+          kind: "combat",
+          confidence: 0.9,
+          source: "quest-log",
+        },
+      ],
+    });
+
+    expect(state.activeModule).toBe("missions");
+    expect(state.preferenceSignals).toHaveLength(1);
+  });
+
   it("guards valid modes", () => {
     expect(isPlayerSystemMode("ambient")).toBe(true);
+    expect(isPlayerSystemMode("focused")).toBe(true);
     expect(isPlayerSystemMode("invalid")).toBe(false);
+  });
+
+  it("guards valid modules", () => {
+    expect(isPlayerSystemModule("identity")).toBe(true);
+    expect(isPlayerSystemModule("missions")).toBe(true);
+    expect(isPlayerSystemModule("guild-quests")).toBe(true);
+    expect(isPlayerSystemModule("logs")).toBe(true);
+    expect(isPlayerSystemModule("mcc")).toBe(true);
+    expect(isPlayerSystemModule("tutorial")).toBe(true);
+    expect(isPlayerSystemModule("points-store")).toBe(true);
+    expect(isPlayerSystemModule("invalid")).toBe(false);
   });
 });
