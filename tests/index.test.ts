@@ -1,4 +1,5 @@
 import {
+  PLAYER_SYSTEM_PACKAGES_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_FEATURE_FLAG_ID,
   createPlayerSystemSessionState,
   isPlayerSystemMode,
@@ -8,7 +9,12 @@ import {
 describe("@plasius/player-system", () => {
   it("exports the package descriptor", () => {
     expect(packageDescriptor.packageName).toBe("@plasius/player-system");
-    expect(packageDescriptor.featureFlagId).toBe(PLAYER_SYSTEM_FEATURE_FLAG_ID);
+    expect(packageDescriptor.featureFlagId).toBe(
+      PLAYER_SYSTEM_PACKAGES_FEATURE_FLAG_ID
+    );
+    expect(PLAYER_SYSTEM_FEATURE_FLAG_ID).toBe(
+      PLAYER_SYSTEM_PACKAGES_FEATURE_FLAG_ID
+    );
   });
 
   it("creates a defaulted session state", () => {
