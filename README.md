@@ -26,6 +26,7 @@ npm install @plasius/player-system
 - focus and combat-safe state
 - preference-learning signal capture
 - module orchestration metadata
+- event-log and achievement read-model contracts
 - authority-safe handoff readiness into external systems
 
 It does not own rendering, world mutation, or institutional authority.
@@ -61,6 +62,9 @@ console.log(session.mode);
 - ADRs: [docs/adrs](./docs/adrs)
 - TDRs: [docs/tdrs](./docs/tdrs)
 - Design notes: [docs/design](./docs/design)
-- Parent feature flag: `isekai.player-system.packages.enabled`
-- Capability: not required for package bootstrap; adoption remains feature-flag led
-- Rollback: disable `isekai.player-system.packages.enabled` to halt package-family adoption without changing package code
+
+The Event Log and Achievement runtime boundary is documented in:
+
+- [Player System Event Log and Achievement Read Model](./docs/design/0002-event-log-and-achievement-read-model.md)
+- [ADR-0002: Player Event Log and Achievement Read Model Boundary](./docs/adrs/adr-0002-player-event-log-and-achievement-read-model-boundary.md)
+- [TDR-0002: Player Event Log and Achievement Runtime Surface](./docs/tdrs/tdr-0002-player-event-log-and-achievement-runtime-surface.md)
