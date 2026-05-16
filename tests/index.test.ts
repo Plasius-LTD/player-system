@@ -1,7 +1,10 @@
 import {
   PLAYER_SYSTEM_PACKAGES_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_FEATURE_FLAG_ID,
+  PLAYER_SYSTEM_RUNTIME_NFR_FEATURE_FLAG_ID,
   createPlayerSystemSessionState,
+  createPlayerSystemRuntimeContract,
+  defaultPlayerSystemRuntimeContract,
   isPlayerSystemModule,
   isPlayerSystemMode,
   packageDescriptor,
@@ -64,5 +67,36 @@ describe("@plasius/player-system", () => {
     expect(isPlayerSystemModule("tutorial")).toBe(true);
     expect(isPlayerSystemModule("points-store")).toBe(true);
     expect(isPlayerSystemModule("invalid")).toBe(false);
+  });
+
+  it("exports runtime NFR defaults behind the inherited feature flag", () => {
+    expect(defaultPlayerSystemRuntimeContract.featureFlagId).toBe(
+      PLAYER_SYSTEM_RUNTIME_NFR_FEATURE_FLAG_ID
+    );
+    expect(defaultPlayerSystemRuntimeContract.timeoutBudget.transitionMs).toBe(150);
+    expect(defaultPlayerSystemRuntimeContract.failurePolicy.retryOwner).toBe(
+      "caller"
+    );
+    expect(
+      defaultPlayerSystemRuntimeContract.failurePolicy.boundedErrorCodes
+    ).toContain("PLAYER_SYSTEM_TIMEOUT");
+  });
+
+  it("creates overridable runtime contracts with frozen nested budgets", () => {
+    const contract = createPlayerSystemRuntimeContract({
+      timeoutBudget: { externalHandoffMs: 900 },
+      updateBudget: { maxSignalsPerCommit: 8 },
+      failurePolicy: { boundedErrorCodes: ["PLAYER_SYSTEM_CANCELLED"] },
+    });
+
+    expect(contract.featureFlagId).toBe(PLAYER_SYSTEM_RUNTIME_NFR_FEATURE_FLAG_ID);
+    expect(contract.timeoutBudget.transitionMs).toBe(150);
+    expect(contract.timeoutBudget.externalHandoffMs).toBe(900);
+    expect(contract.updateBudget.maxSignalsPerCommit).toBe(8);
+    expect(contract.failurePolicy.boundedErrorCodes).toEqual([
+      "PLAYER_SYSTEM_CANCELLED",
+    ]);
+    expect(Object.isFrozen(contract.timeoutBudget)).toBe(true);
+    expect(Object.isFrozen(contract.failurePolicy.boundedErrorCodes)).toBe(true);
   });
 });
