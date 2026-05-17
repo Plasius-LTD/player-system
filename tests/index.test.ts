@@ -118,4 +118,15 @@ describe("@plasius/player-system", () => {
       "PLAYER_SYSTEM_DEGRADED",
     ]);
   });
+
+  it("keeps bounded error defaults when only failure policy flags are overridden", () => {
+    const contract = createPlayerSystemRuntimeContract({
+      failurePolicy: { cancellationRequired: false },
+    });
+
+    expect(contract.failurePolicy.cancellationRequired).toBe(false);
+    expect(contract.failurePolicy.boundedErrorCodes).toEqual(
+      defaultPlayerSystemRuntimeContract.failurePolicy.boundedErrorCodes
+    );
+  });
 });
