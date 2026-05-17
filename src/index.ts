@@ -30,6 +30,13 @@ export interface PlayerSystemRuntimeContract {
   readonly failurePolicy: RuntimeFailurePolicy;
 }
 
+export interface PlayerSystemRuntimeContractInput {
+  readonly featureFlagId?: string;
+  readonly timeoutBudget?: Partial<RuntimeTimeoutBudget>;
+  readonly updateBudget?: Partial<RuntimeUpdateBudget>;
+  readonly failurePolicy?: Partial<RuntimeFailurePolicy>;
+}
+
 export type PlayerSystemMode = "ambient" | "focused";
 
 export type PlayerSystemModule =
@@ -135,7 +142,7 @@ export function createPlayerSystemSessionState(
 }
 
 export function createPlayerSystemRuntimeContract(
-  input: Partial<PlayerSystemRuntimeContract> = {}
+  input: PlayerSystemRuntimeContractInput = {}
 ): PlayerSystemRuntimeContract {
   const timeoutBudget = {
     ...defaultPlayerSystemRuntimeContract.timeoutBudget,

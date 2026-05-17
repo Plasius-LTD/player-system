@@ -99,4 +99,23 @@ describe("@plasius/player-system", () => {
     expect(Object.isFrozen(contract.timeoutBudget)).toBe(true);
     expect(Object.isFrozen(contract.failurePolicy.boundedErrorCodes)).toBe(true);
   });
+
+  it("accepts partial nested runtime overrides from TypeScript consumers", () => {
+    const input = {
+      timeoutBudget: { externalHandoffMs: 900 },
+      updateBudget: { maxSignalsPerCommit: 8 },
+      failurePolicy: { boundedErrorCodes: ["PLAYER_SYSTEM_DEGRADED"] },
+    } satisfies Parameters<typeof createPlayerSystemRuntimeContract>[0];
+
+    const contract = createPlayerSystemRuntimeContract(input);
+
+    expect(contract.timeoutBudget.externalHandoffMs).toBe(900);
+    expect(contract.timeoutBudget.transitionMs).toBe(150);
+    expect(contract.updateBudget.maxSignalsPerCommit).toBe(8);
+    expect(contract.updateBudget.maxBufferedTransitions).toBe(4);
+    expect(contract.failurePolicy.cancellationRequired).toBe(true);
+    expect(contract.failurePolicy.boundedErrorCodes).toEqual([
+      "PLAYER_SYSTEM_DEGRADED",
+    ]);
+  });
 });
