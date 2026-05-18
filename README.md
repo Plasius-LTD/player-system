@@ -70,6 +70,7 @@ The inherited feature flag for this work is `isekai.player-system.runtime-nfr.en
 - explicit transition, cancellation, and external-handoff time budgets
 - bounded update assumptions for buffered transitions and signal batches
 - caller-owned retry policy with bounded error codes for degraded paths
+- partial nested overrides for timeout, update, and failure-policy values
 
 ## Governance
 
