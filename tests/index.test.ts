@@ -2,9 +2,13 @@ import {
   PLAYER_SYSTEM_PACKAGES_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_RUNTIME_NFR_FEATURE_FLAG_ID,
+  PLAYER_SYSTEM_RUNTIME_PORTABILITY_FEATURE_FLAG_ID,
+  assessPlayerSystemRuntimePortability,
   createPlayerSystemSessionState,
   createPlayerSystemRuntimeContract,
+  createPlayerSystemRuntimePortabilityContract,
   defaultPlayerSystemRuntimeContract,
+  defaultPlayerSystemRuntimePortabilityContract,
   isPlayerSystemModule,
   isPlayerSystemMode,
   packageDescriptor,
@@ -50,6 +54,8 @@ describe("@plasius/player-system", () => {
 
     expect(state.activeModule).toBe("missions");
     expect(state.preferenceSignals).toHaveLength(1);
+    expect(Object.isFrozen(state.preferenceSignals)).toBe(true);
+    expect(Object.isFrozen(state.preferenceSignals[0])).toBe(true);
   });
 
   it("guards valid modes", () => {
@@ -128,5 +134,69 @@ describe("@plasius/player-system", () => {
     expect(contract.failurePolicy.boundedErrorCodes).toEqual(
       defaultPlayerSystemRuntimeContract.failurePolicy.boundedErrorCodes
     );
+  });
+
+  it("exports a portability contract behind the inherited runtime-portability feature flag", () => {
+    expect(defaultPlayerSystemRuntimePortabilityContract.featureFlagId).toBe(
+      PLAYER_SYSTEM_RUNTIME_PORTABILITY_FEATURE_FLAG_ID
+    );
+    expect(
+      defaultPlayerSystemRuntimePortabilityContract.sessionData.allowedSessionFields
+    ).toEqual([
+      "sessionId",
+      "mode",
+      "combatSafe",
+      "activeModule",
+      "preferenceSignals",
+    ]);
+    expect(
+      defaultPlayerSystemRuntimePortabilityContract.sessionData.forbiddenSensitiveFields
+    ).toContain("refreshToken");
+  });
+
+  it("creates overridable portability contracts with frozen nested policy arrays", () => {
+    const contract = createPlayerSystemRuntimePortabilityContract({
+      sessionData: {
+        maxRetainedPreferenceSignals: 6,
+        forbiddenSensitiveFields: ["email", "refreshToken"],
+      },
+      compositionScale: {
+        maxConcurrentModules: 2,
+      },
+      portableSeams: {
+        supportedHosts: ["headless-test"],
+      },
+    });
+
+    expect(contract.featureFlagId).toBe(
+      PLAYER_SYSTEM_RUNTIME_PORTABILITY_FEATURE_FLAG_ID
+    );
+    expect(contract.sessionData.maxRetainedPreferenceSignals).toBe(6);
+    expect(contract.compositionScale.maxConcurrentModules).toBe(2);
+    expect(contract.portableSeams.supportedHosts).toEqual(["headless-test"]);
+    expect(Object.isFrozen(contract.sessionData.allowedSessionFields)).toBe(true);
+    expect(Object.isFrozen(contract.portableSeams.supportedHosts)).toBe(true);
+  });
+
+  it("assesses runtime composition samples against the documented scale assumptions", () => {
+    const accepted = assessPlayerSystemRuntimePortability({
+      concurrentModules: 3,
+      paneConsumers: 4,
+      backgroundTransitions: 4,
+    });
+    const rejected = assessPlayerSystemRuntimePortability({
+      concurrentModules: 4,
+      paneConsumers: 5,
+      backgroundTransitions: 6,
+    });
+
+    expect(accepted.accepted).toBe(true);
+    expect(accepted.violations).toEqual([]);
+    expect(rejected.accepted).toBe(false);
+    expect(rejected.violations).toEqual([
+      "concurrentModules",
+      "paneConsumers",
+      "backgroundTransitions",
+    ]);
   });
 });
