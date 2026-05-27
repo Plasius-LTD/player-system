@@ -4,6 +4,19 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 function main() {
+  const requiredPaths = getRequiredPublishedPaths();
+  const missingBuildOutputs = requiredPaths.filter(
+    (requiredPath) => !fs.existsSync(path.resolve(process.cwd(), requiredPath))
+  );
+
+  if (missingBuildOutputs.length > 0) {
+    console.error("Public package check failed. Required build outputs are missing:");
+    for (const filePath of missingBuildOutputs) {
+      console.error(`- ${filePath}`);
+    }
+    process.exit(1);
+  }
+
   const cacheDir = path.resolve(process.cwd(), ".npm-cache-packcheck");
   const output = execSync(
     `npm pack --dry-run --json --ignore-scripts --cache "${cacheDir}"`,
@@ -16,6 +29,15 @@ function main() {
   const parsed = parseNpmPackJson(output);
   const files = Array.isArray(parsed) && parsed[0]?.files ? parsed[0].files : [];
   const paths = files.map((entry) => entry.path);
+  const missingRequiredPaths = requiredPaths.filter((requiredPath) => !paths.includes(requiredPath));
+
+  if (missingRequiredPaths.length > 0) {
+    console.error("Public package check failed. Required package outputs are missing:");
+    for (const filePath of missingRequiredPaths) {
+      console.error(`- ${filePath}`);
+    }
+    process.exit(1);
+  }
 
   const forbiddenTarballPathPatterns = [
     {
@@ -106,6 +128,50 @@ function parseNpmPackJson(rawOutput) {
 
   const jsonSlice = rawOutput.slice(start, end + 1);
   return JSON.parse(jsonSlice);
+}
+
+function getRequiredPublishedPaths() {
+  const packageJsonPath = path.resolve(process.cwd(), "package.json");
+  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+  const candidates = [
+    packageJson.main,
+    packageJson.module,
+    packageJson.types,
+    ...collectExportPaths(packageJson.exports),
+  ];
+
+  return Array.from(
+    new Set(
+      candidates
+        .filter((candidate) => typeof candidate === "string")
+        .map(normalizePublishedPath)
+        .filter((candidate) => candidate.startsWith("dist/"))
+    )
+  );
+}
+
+function collectExportPaths(exportsField) {
+  if (!exportsField) {
+    return [];
+  }
+
+  if (typeof exportsField === "string") {
+    return [exportsField];
+  }
+
+  if (Array.isArray(exportsField)) {
+    return exportsField.flatMap(collectExportPaths);
+  }
+
+  if (typeof exportsField === "object") {
+    return Object.values(exportsField).flatMap(collectExportPaths);
+  }
+
+  return [];
+}
+
+function normalizePublishedPath(filePath) {
+  return filePath.replace(/^\.\//u, "");
 }
 
 function scanCodeReferences(roots, extensions, patterns) {
