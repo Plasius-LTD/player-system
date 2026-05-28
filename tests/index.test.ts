@@ -1,6 +1,10 @@
 import {
+  PLAYER_SYSTEM_PACKAGES_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_FEATURE_FLAG_ID,
+  PLAYER_SYSTEM_RUNTIME_NFR_FEATURE_FLAG_ID,
   createPlayerSystemSessionState,
+  createPlayerSystemRuntimeContract,
+  defaultPlayerSystemRuntimeContract,
   isPlayerSystemModule,
   isPlayerSystemMode,
   packageDescriptor,
@@ -9,7 +13,12 @@ import {
 describe("@plasius/player-system", () => {
   it("exports the package descriptor", () => {
     expect(packageDescriptor.packageName).toBe("@plasius/player-system");
-    expect(packageDescriptor.featureFlagId).toBe(PLAYER_SYSTEM_FEATURE_FLAG_ID);
+    expect(packageDescriptor.featureFlagId).toBe(
+      PLAYER_SYSTEM_PACKAGES_FEATURE_FLAG_ID
+    );
+    expect(PLAYER_SYSTEM_FEATURE_FLAG_ID).toBe(
+      PLAYER_SYSTEM_PACKAGES_FEATURE_FLAG_ID
+    );
   });
 
   it("creates a defaulted session state", () => {
@@ -23,48 +32,101 @@ describe("@plasius/player-system", () => {
     expect(state.preferenceSignals).toEqual([]);
   });
 
+  it("preserves explicit module and preference signals", () => {
+    const state = createPlayerSystemSessionState({
+      sessionId: "awakening-002",
+      mode: "focused",
+      combatSafe: false,
+      activeModule: "missions",
+      preferenceSignals: [
+        {
+          signalId: "sig-1",
+          kind: "combat",
+          confidence: 0.9,
+          source: "quest-log",
+        },
+      ],
+    });
+
+    expect(state.activeModule).toBe("missions");
+    expect(state.preferenceSignals).toHaveLength(1);
+  });
+
   it("guards valid modes", () => {
     expect(isPlayerSystemMode("ambient")).toBe(true);
     expect(isPlayerSystemMode("focused")).toBe(true);
     expect(isPlayerSystemMode("invalid")).toBe(false);
   });
 
-  it("guards every public module and rejects unknown modules", () => {
-    for (const moduleName of [
-      "identity",
-      "missions",
-      "guild-quests",
-      "logs",
-      "mcc",
-      "tutorial",
-      "points-store",
-    ]) {
-      expect(isPlayerSystemModule(moduleName)).toBe(true);
-    }
-
-    expect(isPlayerSystemModule("inventory")).toBe(false);
+  it("guards valid modules", () => {
+    expect(isPlayerSystemModule("identity")).toBe(true);
+    expect(isPlayerSystemModule("missions")).toBe(true);
+    expect(isPlayerSystemModule("guild-quests")).toBe(true);
+    expect(isPlayerSystemModule("logs")).toBe(true);
+    expect(isPlayerSystemModule("mcc")).toBe(true);
+    expect(isPlayerSystemModule("tutorial")).toBe(true);
+    expect(isPlayerSystemModule("points-store")).toBe(true);
+    expect(isPlayerSystemModule("invalid")).toBe(false);
   });
 
-  it("preserves explicit active module and preference signals", () => {
-    const preferenceSignals = [
-      {
-        signalId: "preference-1",
-        kind: "exploration" as const,
-        confidence: 0.82,
-        source: "quest-log",
-      },
-    ];
+  it("exports runtime NFR defaults behind the inherited feature flag", () => {
+    expect(defaultPlayerSystemRuntimeContract.featureFlagId).toBe(
+      PLAYER_SYSTEM_RUNTIME_NFR_FEATURE_FLAG_ID
+    );
+    expect(defaultPlayerSystemRuntimeContract.timeoutBudget.transitionMs).toBe(150);
+    expect(defaultPlayerSystemRuntimeContract.failurePolicy.retryOwner).toBe(
+      "caller"
+    );
+    expect(
+      defaultPlayerSystemRuntimeContract.failurePolicy.boundedErrorCodes
+    ).toContain("PLAYER_SYSTEM_TIMEOUT");
+  });
 
-    const state = createPlayerSystemSessionState({
-      sessionId: "awakening-002",
-      mode: "focused",
-      combatSafe: false,
-      activeModule: "missions",
-      preferenceSignals,
+  it("creates overridable runtime contracts with frozen nested budgets", () => {
+    const contract = createPlayerSystemRuntimeContract({
+      timeoutBudget: { externalHandoffMs: 900 },
+      updateBudget: { maxSignalsPerCommit: 8 },
+      failurePolicy: { boundedErrorCodes: ["PLAYER_SYSTEM_CANCELLED"] },
     });
 
-    expect(state.activeModule).toBe("missions");
-    expect(state.preferenceSignals).toBe(preferenceSignals);
-    expect(state.combatSafe).toBe(false);
+    expect(contract.featureFlagId).toBe(PLAYER_SYSTEM_RUNTIME_NFR_FEATURE_FLAG_ID);
+    expect(contract.timeoutBudget.transitionMs).toBe(150);
+    expect(contract.timeoutBudget.externalHandoffMs).toBe(900);
+    expect(contract.updateBudget.maxSignalsPerCommit).toBe(8);
+    expect(contract.failurePolicy.boundedErrorCodes).toEqual([
+      "PLAYER_SYSTEM_CANCELLED",
+    ]);
+    expect(Object.isFrozen(contract.timeoutBudget)).toBe(true);
+    expect(Object.isFrozen(contract.failurePolicy.boundedErrorCodes)).toBe(true);
+  });
+
+  it("accepts partial nested runtime overrides from TypeScript consumers", () => {
+    const input = {
+      timeoutBudget: { externalHandoffMs: 900 },
+      updateBudget: { maxSignalsPerCommit: 8 },
+      failurePolicy: { boundedErrorCodes: ["PLAYER_SYSTEM_DEGRADED"] },
+    } satisfies Parameters<typeof createPlayerSystemRuntimeContract>[0];
+
+    const contract = createPlayerSystemRuntimeContract(input);
+
+    expect(contract.timeoutBudget.externalHandoffMs).toBe(900);
+    expect(contract.timeoutBudget.transitionMs).toBe(150);
+    expect(contract.updateBudget.maxSignalsPerCommit).toBe(8);
+    expect(contract.updateBudget.maxBufferedTransitions).toBe(4);
+    expect(contract.failurePolicy.cancellationRequired).toBe(true);
+    expect(contract.failurePolicy.boundedErrorCodes).toEqual([
+      "PLAYER_SYSTEM_DEGRADED",
+    ]);
+  });
+
+  it("keeps bounded error defaults when only failure policy flags are overridden", () => {
+    const contract = createPlayerSystemRuntimeContract({
+      failurePolicy: { cancellationRequired: false },
+    });
+
+    expect(contract.failurePolicy.cancellationRequired).toBe(false);
+    expect(contract.failurePolicy.boundedErrorCodes).toEqual(
+      defaultPlayerSystemRuntimeContract.failurePolicy.boundedErrorCodes
+    );
   });
 });

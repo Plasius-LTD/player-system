@@ -29,7 +29,9 @@ function main() {
   const parsed = parseNpmPackJson(output);
   const files = Array.isArray(parsed) && parsed[0]?.files ? parsed[0].files : [];
   const paths = files.map((entry) => entry.path);
-  const missingRequiredPaths = requiredPaths.filter((requiredPath) => !paths.includes(requiredPath));
+  const missingRequiredPaths = requiredPaths.filter((requiredPath) =>
+    !paths.includes(requiredPath)
+  );
 
   if (missingRequiredPaths.length > 0) {
     console.error("Public package check failed. Required package outputs are missing:");
@@ -130,9 +132,12 @@ function parseNpmPackJson(rawOutput) {
   return JSON.parse(jsonSlice);
 }
 
-function getRequiredPublishedPaths() {
+function readPackageJson() {
   const packageJsonPath = path.resolve(process.cwd(), "package.json");
-  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+  return JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+}
+
+function getRequiredPublishedPaths(packageJson = readPackageJson()) {
   const candidates = [
     packageJson.main,
     packageJson.module,
@@ -235,4 +240,13 @@ function collectFiles(root, extensions) {
   return files;
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = {
+  collectExportPaths,
+  getRequiredPublishedPaths,
+  normalizePublishedPath,
+  parseNpmPackJson,
+};

@@ -27,6 +27,8 @@ npm install @plasius/player-system
 - preference-learning signal capture
 - module orchestration metadata
 - event-log and achievement read-model contracts
+- timeout, cancellation, and bounded-failure contracts for async coordination
+- transition/update budgets that downstream renderers can validate against
 - authority-safe handoff readiness into external systems
 
 It does not own rendering, world mutation, or institutional authority.
@@ -43,6 +45,7 @@ node demo/example.mjs
 ```ts
 import {
   PLAYER_SYSTEM_FEATURE_FLAG_ID,
+  defaultPlayerSystemRuntimeContract,
   createPlayerSystemSessionState,
   packageDescriptor,
 } from "@plasius/player-system";
@@ -55,7 +58,19 @@ const session = createPlayerSystemSessionState({
 
 console.log(packageDescriptor.packageName, PLAYER_SYSTEM_FEATURE_FLAG_ID);
 console.log(session.mode);
+console.log(defaultPlayerSystemRuntimeContract.timeoutBudget.transitionMs);
 ```
+
+## Runtime NFR Contract
+
+The inherited feature flag for this work is `isekai.player-system.runtime-nfr.enabled`.
+
+`defaultPlayerSystemRuntimeContract` and `createPlayerSystemRuntimeContract()` expose:
+
+- explicit transition, cancellation, and external-handoff time budgets
+- bounded update assumptions for buffered transitions and signal batches
+- caller-owned retry policy with bounded error codes for degraded paths
+- partial nested overrides for timeout, update, and failure-policy values
 
 ## Governance
 
