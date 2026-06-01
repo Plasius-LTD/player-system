@@ -17,6 +17,23 @@ function main() {
   const files = Array.isArray(parsed) && parsed[0]?.files ? parsed[0].files : [];
   const paths = files.map((entry) => entry.path);
 
+  const expectedDistPaths = [
+    "dist/index.cjs",
+    "dist/index.js",
+    "dist/index.d.ts",
+  ];
+  const missingDistPaths = expectedDistPaths.filter((expectedPath) =>
+    !paths.includes(expectedPath)
+  );
+
+  if (missingDistPaths.length > 0) {
+    console.error("Public package check failed. Missing build outputs:");
+    for (const missingPath of missingDistPaths) {
+      console.error(`- ${missingPath}`);
+    }
+    process.exit(1);
+  }
+
   const forbiddenTarballPathPatterns = [
     {
       label: "private monorepo path",
