@@ -30,6 +30,7 @@ npm install @plasius/player-system
 - timeout, cancellation, and bounded-failure contracts for async coordination
 - transition/update budgets that downstream renderers can validate against
 - authority-safe handoff readiness into external systems
+- privacy-safe session-data minimization and runtime portability expectations
 
 It does not own rendering, world mutation, or institutional authority.
 
@@ -46,6 +47,7 @@ node demo/example.mjs
 import {
   PLAYER_SYSTEM_FEATURE_FLAG_ID,
   defaultPlayerSystemRuntimeContract,
+  defaultPlayerSystemRuntimePortabilityContract,
   createPlayerSystemSessionState,
   packageDescriptor,
 } from "@plasius/player-system";
@@ -59,6 +61,7 @@ const session = createPlayerSystemSessionState({
 console.log(packageDescriptor.packageName, PLAYER_SYSTEM_FEATURE_FLAG_ID);
 console.log(session.mode);
 console.log(defaultPlayerSystemRuntimeContract.timeoutBudget.transitionMs);
+console.log(defaultPlayerSystemRuntimePortabilityContract.sessionData.allowedSessionFields);
 ```
 
 ## Runtime NFR Contract
@@ -71,6 +74,19 @@ The inherited feature flag for this work is `isekai.player-system.runtime-nfr.en
 - bounded update assumptions for buffered transitions and signal batches
 - caller-owned retry policy with bounded error codes for degraded paths
 - partial nested overrides for timeout, update, and failure-policy values
+
+## Runtime Portability Contract
+
+The inherited feature flag for this work is `isekai.player-system.runtime-portability.enabled`.
+
+`defaultPlayerSystemRuntimePortabilityContract`,
+`createPlayerSystemRuntimePortabilityContract()`, and
+`assessPlayerSystemRuntimePortability()` make these expectations explicit:
+
+- only the documented session and preference-signal fields belong in the package payload
+- sensitive account or token fields remain forbidden at the package boundary
+- multi-module and multi-pane compositions stay inside documented concurrency budgets
+- host integrations provide portable adapters instead of coupling to one renderer or storage topology
 
 ## Governance
 
