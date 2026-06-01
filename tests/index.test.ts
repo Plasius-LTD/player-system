@@ -178,6 +178,27 @@ describe("@plasius/player-system", () => {
     expect(Object.isFrozen(contract.portableSeams.supportedHosts)).toBe(true);
   });
 
+  it("keeps default sensitive fields and supported hosts when adjacent settings change", () => {
+    const contract = createPlayerSystemRuntimePortabilityContract({
+      sessionData: {
+        maxRetainedPreferenceSignals: 4,
+      },
+      portableSeams: {
+        requiredAdapters: ["clock"],
+      },
+    });
+
+    expect(contract.sessionData.maxRetainedPreferenceSignals).toBe(4);
+    expect(contract.sessionData.forbiddenSensitiveFields).toEqual(
+      defaultPlayerSystemRuntimePortabilityContract.sessionData
+        .forbiddenSensitiveFields
+    );
+    expect(contract.portableSeams.supportedHosts).toEqual(
+      defaultPlayerSystemRuntimePortabilityContract.portableSeams.supportedHosts
+    );
+    expect(contract.portableSeams.requiredAdapters).toEqual(["clock"]);
+  });
+
   it("assesses runtime composition samples against the documented scale assumptions", () => {
     const accepted = assessPlayerSystemRuntimePortability({
       concurrentModules: 3,
