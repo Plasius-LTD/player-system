@@ -3,7 +3,11 @@ import {
   PLAYER_SYSTEM_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_RUNTIME_NFR_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_RUNTIME_PORTABILITY_FEATURE_FLAG_ID,
+  PLAYER_SYSTEM_TRAINING_ROUTING_FEATURE_FLAG_ID,
   assessPlayerSystemRuntimePortability,
+  createPlayerSystemTrainingAuthorityHandoff,
+  createPlayerSystemTrainingInstitutionReadiness,
+  createPlayerSystemTrainingRoutingState,
   createPlayerSystemSessionState,
   createPlayerSystemRuntimeContract,
   createPlayerSystemRuntimePortabilityContract,
@@ -219,5 +223,194 @@ describe("@plasius/player-system", () => {
       "paneConsumers",
       "backgroundTransitions",
     ]);
+  });
+
+  it("defaults institution track support from @plasius/training semantics", () => {
+    const institution = createPlayerSystemTrainingInstitutionReadiness({
+      institutionId: "barracks",
+      ready: true,
+      label: "Barracks readiness",
+      requirement: "Requires a guild-cleared stage.",
+      reason: "stage-unlocked",
+    });
+
+    expect(institution.supportedTracks).toEqual(["internalized", "hybrid"]);
+    expect(institution.trustRequirement).toBeNull();
+    expect(institution.missionRequirement).toBeNull();
+  });
+
+  it("keeps players in field practice while exposing blocked prerequisite detail", () => {
+    const routingState = createPlayerSystemTrainingRoutingState({
+      growthFocus: "hybrid",
+      institutionReadiness: [
+        createPlayerSystemTrainingInstitutionReadiness({
+          institutionId: "barracks",
+          ready: false,
+          label: "Barracks readiness",
+          requirement: "Requires a guild-cleared stage.",
+          reason: "requires-training-stage",
+          trustRequirement: "Earn training-yard trust rank one.",
+        }),
+        createPlayerSystemTrainingInstitutionReadiness({
+          institutionId: "school",
+          ready: false,
+          label: "School readiness",
+          requirement: "Requires a school-candidate stage.",
+          reason: "requires-training-stage",
+          missionRequirement: "Finish the literacy proving mission.",
+        }),
+      ],
+      authorityEligibility: [
+        createPlayerSystemTrainingAuthorityHandoff({
+          authorityId: "training",
+          eligible: false,
+          label: "Institution training handoff",
+          handoffSurface: "player-system:training",
+          reason: "requires-training-stage",
+        }),
+        createPlayerSystemTrainingAuthorityHandoff({
+          authorityId: "spellcraft",
+          eligible: false,
+          label: "Spellcraft handoff",
+          handoffSurface: "player-system:spellcraft",
+          reason: "requires-apprenticeship-stage",
+          requirement: "Unlock an academy or apprenticeship candidate stage.",
+        }),
+      ],
+    });
+
+    expect(routingState.featureFlagId).toBe(
+      PLAYER_SYSTEM_TRAINING_ROUTING_FEATURE_FLAG_ID
+    );
+    expect(routingState.recommendation).toEqual({
+      routeId: "field-practice",
+      focus: "hybrid",
+      reason: "no-institution-ready",
+    });
+    expect(routingState.readyInstitutions).toEqual([]);
+    expect(routingState.blockedPrerequisites).toEqual([
+      expect.objectContaining({
+        institutionId: "barracks",
+        trustRequirement: "Earn training-yard trust rank one.",
+      }),
+      expect.objectContaining({
+        institutionId: "school",
+        missionRequirement: "Finish the literacy proving mission.",
+      }),
+    ]);
+    expect(routingState.trainingAuthority?.eligible).toBe(false);
+    expect(routingState.craftingAuthorities).toHaveLength(1);
+  });
+
+  it("biases early unlocked routes toward the declared internalized focus", () => {
+    const routingState = createPlayerSystemTrainingRoutingState({
+      growthFocus: "internalized",
+      institutionReadiness: [
+        createPlayerSystemTrainingInstitutionReadiness({
+          institutionId: "barracks",
+          ready: true,
+          label: "Barracks readiness",
+          requirement: "Requires a guild-cleared stage.",
+          reason: "stage-unlocked",
+        }),
+        createPlayerSystemTrainingInstitutionReadiness({
+          institutionId: "school",
+          ready: true,
+          label: "School readiness",
+          requirement: "Requires a school-candidate stage.",
+          reason: "stage-unlocked",
+        }),
+      ],
+      authorityEligibility: [],
+    });
+
+    expect(routingState.recommendation).toEqual({
+      routeId: "barracks",
+      focus: "internalized",
+      reason: "focus-internalized",
+    });
+  });
+
+  it("biases early unlocked routes toward the declared externalized focus", () => {
+    const routingState = createPlayerSystemTrainingRoutingState({
+      growthFocus: "externalized",
+      institutionReadiness: [
+        createPlayerSystemTrainingInstitutionReadiness({
+          institutionId: "barracks",
+          ready: true,
+          label: "Barracks readiness",
+          requirement: "Requires a guild-cleared stage.",
+          reason: "stage-unlocked",
+        }),
+        createPlayerSystemTrainingInstitutionReadiness({
+          institutionId: "school",
+          ready: true,
+          label: "School readiness",
+          requirement: "Requires a school-candidate stage.",
+          reason: "stage-unlocked",
+        }),
+      ],
+      authorityEligibility: [],
+    });
+
+    expect(routingState.recommendation).toEqual({
+      routeId: "school",
+      focus: "externalized",
+      reason: "focus-externalized",
+    });
+  });
+
+  it("prefers apprenticeship once crafting-specialization handoffs are live", () => {
+    const routingState = createPlayerSystemTrainingRoutingState({
+      growthFocus: "hybrid",
+      institutionReadiness: [
+        createPlayerSystemTrainingInstitutionReadiness({
+          institutionId: "academy",
+          ready: true,
+          label: "Academy readiness",
+          requirement: "Requires an academy-candidate stage.",
+          reason: "stage-unlocked",
+        }),
+        createPlayerSystemTrainingInstitutionReadiness({
+          institutionId: "apprenticeship",
+          ready: true,
+          label: "Apprenticeship readiness",
+          requirement: "Requires an apprenticeship-candidate stage.",
+          reason: "stage-unlocked",
+        }),
+      ],
+      authorityEligibility: [
+        createPlayerSystemTrainingAuthorityHandoff({
+          authorityId: "training",
+          eligible: true,
+          label: "Institution training handoff",
+          handoffSurface: "player-system:training",
+          reason: "institution-ready",
+        }),
+        createPlayerSystemTrainingAuthorityHandoff({
+          authorityId: "spellcraft",
+          eligible: true,
+          label: "Spellcraft handoff",
+          handoffSurface: "player-system:spellcraft",
+          reason: "institution-ready",
+        }),
+        createPlayerSystemTrainingAuthorityHandoff({
+          authorityId: "item-crafting",
+          eligible: true,
+          label: "Item-crafting handoff",
+          handoffSurface: "player-system:item-crafting",
+          reason: "institution-ready",
+        }),
+      ],
+    });
+
+    expect(routingState.recommendation).toEqual({
+      routeId: "apprenticeship",
+      focus: "hybrid",
+      reason: "crafting-apprenticeship",
+    });
+    expect(
+      routingState.craftingAuthorities.map((authority) => authority.authorityId)
+    ).toEqual(["spellcraft", "item-crafting"]);
   });
 });
