@@ -122,6 +122,88 @@ export interface PlayerSystemContractAssessment {
   readonly violations: readonly string[];
 }
 
+export type PlayerSystemPointsLedgerId = "pp" | "esp" | "tis" | "dis";
+
+export type PlayerSystemEvolutionStage = "proto-social" | "social-lock";
+
+export type PlayerSystemAuthorityBand = "frontier" | "civic" | "divine";
+
+export type PlayerSystemPointsLedgerAvailability =
+  | "available"
+  | "locked"
+  | "historical";
+
+export type PlayerSystemPointsAuthorityState =
+  | "self"
+  | PlayerSystemPointsLedgerAvailability;
+
+export type PlayerSystemPointsDevolutionExecutionState =
+  | "eligible"
+  | "window-closed"
+  | "already-used"
+  | "insufficient-balance";
+
+export interface PlayerSystemPointsLedgerEntry {
+  readonly label: string;
+  readonly amount: number;
+  readonly unit: PlayerSystemPointsLedgerId;
+}
+
+export interface PlayerSystemPointsSpendSurface {
+  readonly actionId: string;
+  readonly title: string;
+  readonly cost: number | null;
+  readonly prerequisite: string;
+  readonly consequence: string;
+}
+
+export interface PlayerSystemPointsAuthorityBoundary {
+  readonly ledgerId: PlayerSystemPointsLedgerId;
+  readonly activeBand: PlayerSystemAuthorityBand;
+  readonly requiredBand: PlayerSystemAuthorityBand | null;
+  readonly state: PlayerSystemPointsAuthorityState;
+  readonly canSpend: boolean;
+  readonly reason: string;
+}
+
+export interface PlayerSystemPointsLedgerState {
+  readonly id: PlayerSystemPointsLedgerId;
+  readonly title: string;
+  readonly balance: number;
+  readonly availability: PlayerSystemPointsLedgerAvailability;
+  readonly availabilityLabel: string;
+  readonly summary: string;
+  readonly authorityBoundary: PlayerSystemPointsAuthorityBoundary;
+  readonly recentIncome: readonly PlayerSystemPointsLedgerEntry[];
+  readonly recentOutgoings: readonly PlayerSystemPointsLedgerEntry[];
+  readonly committedSpend: readonly PlayerSystemPointsLedgerEntry[];
+  readonly actions: readonly PlayerSystemPointsSpendSurface[];
+}
+
+export interface PlayerSystemPointsDevolutionState {
+  readonly available: boolean;
+  readonly cost: number;
+  readonly prerequisite: string;
+  readonly consequence: string;
+  readonly executionState: PlayerSystemPointsDevolutionExecutionState;
+  readonly unavailableReason: string | null;
+}
+
+export interface PlayerSystemPointsStoreState {
+  readonly featureFlagId: string;
+  readonly evolutionStage: PlayerSystemEvolutionStage;
+  readonly authorityBand: PlayerSystemAuthorityBand;
+  readonly ledgers: readonly PlayerSystemPointsLedgerState[];
+  readonly devolutionAction: PlayerSystemPointsDevolutionState;
+}
+
+export interface CreatePlayerSystemPointsStoreStateInput {
+  readonly evolutionStage: PlayerSystemEvolutionStage;
+  readonly authorityBand: PlayerSystemAuthorityBand;
+  readonly devolutionAlreadyUsed?: boolean;
+  readonly ppBalance?: number;
+}
+
 export const PLAYER_SYSTEM_PACKAGE = "@plasius/player-system";
 export const PLAYER_SYSTEM_ENV_PREFIX = "PLAYER_SYSTEM";
 export const PLAYER_SYSTEM_PACKAGES_FEATURE_FLAG_ID =
@@ -131,6 +213,8 @@ export const PLAYER_SYSTEM_RUNTIME_NFR_FEATURE_FLAG_ID =
   "isekai.player-system.runtime-nfr.enabled";
 export const PLAYER_SYSTEM_RUNTIME_PORTABILITY_FEATURE_FLAG_ID =
   "isekai.player-system.runtime-portability.enabled";
+export const PLAYER_SYSTEM_POINTS_STORE_FEATURE_FLAG_ID =
+  "isekai.player-system.points-store.enabled";
 
 export const packageDescriptor: PackageDescriptor = Object.freeze({
   packageName: PLAYER_SYSTEM_PACKAGE,
@@ -229,6 +313,402 @@ export function isPlayerSystemModule(value: string): value is PlayerSystemModule
     value === "tutorial" ||
     value === "points-store"
   );
+}
+
+export function isPlayerSystemEvolutionStage(
+  value: string
+): value is PlayerSystemEvolutionStage {
+  return value === "proto-social" || value === "social-lock";
+}
+
+export function isPlayerSystemAuthorityBand(
+  value: string
+): value is PlayerSystemAuthorityBand {
+  return value === "frontier" || value === "civic" || value === "divine";
+}
+
+function createPointsEntry(
+  label: string,
+  amount: number,
+  unit: PlayerSystemPointsLedgerId
+): PlayerSystemPointsLedgerEntry {
+  return Object.freeze({
+    label,
+    amount,
+    unit,
+  });
+}
+
+function createPointsSpendSurface(
+  actionId: string,
+  title: string,
+  cost: number | null,
+  prerequisite: string,
+  consequence: string
+): PlayerSystemPointsSpendSurface {
+  return Object.freeze({
+    actionId,
+    title,
+    cost,
+    prerequisite,
+    consequence,
+  });
+}
+
+function resolvePlayerSystemPointsAuthorityBoundary(
+  ledgerId: PlayerSystemPointsLedgerId,
+  authorityBand: PlayerSystemAuthorityBand
+): PlayerSystemPointsAuthorityBoundary {
+  switch (ledgerId) {
+    case "pp":
+      return Object.freeze({
+        ledgerId,
+        activeBand: authorityBand,
+        requiredBand: null,
+        state: "self",
+        canSpend: true,
+        reason:
+          "Personal points remain governed by the player shell and bounded evolution rules.",
+      });
+    case "esp":
+      return Object.freeze({
+        ledgerId,
+        activeBand: authorityBand,
+        requiredBand: "frontier",
+        state: "available",
+        canSpend: true,
+        reason:
+          "Exploration spend remains available so long as the player stays outside combat.",
+      });
+    case "tis":
+      if (authorityBand === "civic") {
+        return Object.freeze({
+          ledgerId,
+          activeBand: authorityBand,
+          requiredBand: "civic",
+          state: "available",
+          canSpend: true,
+          reason:
+            "Territorial influence spending is active because civic-band authority is unlocked.",
+        });
+      }
+
+      if (authorityBand === "divine") {
+        return Object.freeze({
+          ledgerId,
+          activeBand: authorityBand,
+          requiredBand: "civic",
+          state: "historical",
+          canSpend: false,
+          reason:
+            "Civic influence remains visible for audit only after divine-band authority takes over.",
+        });
+      }
+
+      return Object.freeze({
+        ledgerId,
+        activeBand: authorityBand,
+        requiredBand: "civic",
+        state: "locked",
+        canSpend: false,
+        reason:
+          "Territorial influence spending stays locked until civic-band authority is unlocked.",
+      });
+    case "dis":
+      if (authorityBand === "divine") {
+        return Object.freeze({
+          ledgerId,
+          activeBand: authorityBand,
+          requiredBand: "divine",
+          state: "available",
+          canSpend: true,
+          reason:
+            "Divine influence spending is active because seat-scale authority is available.",
+        });
+      }
+
+      return Object.freeze({
+        ledgerId,
+        activeBand: authorityBand,
+        requiredBand: "divine",
+        state: "locked",
+        canSpend: false,
+        reason:
+          "Divine influence spending remains locked until divine-band seat access is unlocked.",
+      });
+  }
+}
+
+function buildPpLedger(
+  authorityBand: PlayerSystemAuthorityBand,
+  ppBalance: number
+): PlayerSystemPointsLedgerState {
+  return Object.freeze({
+    id: "pp",
+    title: "Personal Points (PP)",
+    balance: ppBalance,
+    availability: "available",
+    availabilityLabel: "Active personal ledger",
+    summary:
+      "PP covers personal presentation, MCC tuning, bounded evolution assistance, and the one governed proto-social return-to-slime path.",
+    authorityBoundary: resolvePlayerSystemPointsAuthorityBoundary("pp", authorityBand),
+    recentIncome: Object.freeze([
+      createPointsEntry("Mission review payout", 6, "pp"),
+      createPointsEntry("Disciplined MCC stabilization", 4, "pp"),
+    ]),
+    recentOutgoings: Object.freeze([
+      createPointsEntry("Identity shell refinements", -3, "pp"),
+      createPointsEntry("Field recovery after defeat", -2, "pp"),
+    ]),
+    committedSpend: Object.freeze([
+      createPointsEntry("Reserved MCC repair buffer", 5, "pp"),
+    ]),
+    actions: Object.freeze([
+      createPointsSpendSurface(
+        "retune-mcc-composition",
+        "Retune MCC composition",
+        4,
+        "Requires an idle loadout state before the next deployment.",
+        "Updates the active combat composition without bypassing progression rules."
+      ),
+    ]),
+  });
+}
+
+function buildEspLedger(
+  authorityBand: PlayerSystemAuthorityBand
+): PlayerSystemPointsLedgerState {
+  return Object.freeze({
+    id: "esp",
+    title: "Exploration System Points (ESP)",
+    balance: 11,
+    availability: "available",
+    availabilityLabel: "Active travel ledger",
+    summary:
+      "ESP governs route convenience, merchantile movement advantages, and safer non-combat travel improvements.",
+    authorityBoundary: resolvePlayerSystemPointsAuthorityBoundary("esp", authorityBand),
+    recentIncome: Object.freeze([
+      createPointsEntry("Cartography milestone", 5, "esp"),
+      createPointsEntry("Safe-route discovery", 3, "esp"),
+    ]),
+    recentOutgoings: Object.freeze([
+      createPointsEntry("Waygate comfort tuning", -2, "esp"),
+    ]),
+    committedSpend: Object.freeze([
+      createPointsEntry("Fast-travel safety reserve", 3, "esp"),
+    ]),
+    actions: Object.freeze([
+      createPointsSpendSurface(
+        "improve-fast-travel-comfort",
+        "Improve fast-travel comfort",
+        3,
+        "Only valid outside combat and while the current route remains stable.",
+        "Shortens non-combat travel friction but can still be interrupted by urgent world events."
+      ),
+    ]),
+  });
+}
+
+function buildTisLedger(
+  authorityBand: PlayerSystemAuthorityBand
+): PlayerSystemPointsLedgerState {
+  const authorityBoundary = resolvePlayerSystemPointsAuthorityBoundary(
+    "tis",
+    authorityBand
+  );
+
+  if (authorityBoundary.state === "available") {
+    return Object.freeze({
+      id: "tis",
+      title: "Territorial Influence System points (TIS)",
+      balance: 14,
+      availability: "available",
+      availabilityLabel: "Active civic ledger",
+      summary:
+        "TIS funds territorial planning, work orders, walls, upgrades, and domain resilience measures once civic-band play unlocks.",
+      authorityBoundary,
+      recentIncome: Object.freeze([
+        createPointsEntry("Settlement levy surplus", 7, "tis"),
+        createPointsEntry("Ward contract completion", 4, "tis"),
+      ]),
+      recentOutgoings: Object.freeze([
+        createPointsEntry("Northern wall reinforcement", -5, "tis"),
+      ]),
+      committedSpend: Object.freeze([
+        createPointsEntry("Bridge repair work order", 6, "tis"),
+      ]),
+      actions: Object.freeze([
+        createPointsSpendSurface(
+          "queue-civic-work-order",
+          "Queue civic work order",
+          6,
+          "Requires active civic-band authority and a valid territory target.",
+          "Commits settlement influence to infrastructure work and starts a governed build timer."
+        ),
+      ]),
+    });
+  }
+
+  if (authorityBoundary.state === "historical") {
+    return Object.freeze({
+      id: "tis",
+      title: "Territorial Influence System points (TIS)",
+      balance: 14,
+      availability: "historical",
+      availabilityLabel: "Historical civic ledger",
+      summary:
+        "TIS history remains visible for civic accountability, but it is not the active spend surface once divine-band authority takes over.",
+      authorityBoundary,
+      recentIncome: Object.freeze([
+        createPointsEntry("Civic memorial reserve", 2, "tis"),
+      ]),
+      recentOutgoings: Object.freeze([
+        createPointsEntry("Archived civic obligation", -1, "tis"),
+      ]),
+      committedSpend: Object.freeze([
+        createPointsEntry("Previously approved wall reserve", 4, "tis"),
+      ]),
+      actions: Object.freeze([
+        createPointsSpendSurface(
+          "review-civic-obligations",
+          "Review civic obligations",
+          null,
+          "Available for audit only while divine-band authority is active.",
+          "Keeps prior civic commitments visible without making TIS a second active core bar."
+        ),
+      ]),
+    });
+  }
+
+  return Object.freeze({
+    id: "tis",
+    title: "Territorial Influence System points (TIS)",
+    balance: 0,
+    availability: "locked",
+    availabilityLabel: "Locked until civic-band unlock",
+    summary:
+      "TIS stays visible as a future civic ledger, but spending cannot begin before settlement and civic authority unlocks.",
+    authorityBoundary,
+    recentIncome: Object.freeze([]),
+    recentOutgoings: Object.freeze([]),
+    committedSpend: Object.freeze([]),
+    actions: Object.freeze([
+      createPointsSpendSurface(
+        "civic-work-orders-locked",
+        "Civic work orders remain locked",
+        null,
+        "Reach civic-band play and unlock a valid territory authority surface.",
+        "Prevents territorial spend from bypassing world authority boundaries."
+      ),
+    ]),
+  });
+}
+
+function buildDisLedger(
+  authorityBand: PlayerSystemAuthorityBand
+): PlayerSystemPointsLedgerState {
+  const authorityBoundary = resolvePlayerSystemPointsAuthorityBoundary(
+    "dis",
+    authorityBand
+  );
+
+  if (authorityBoundary.state === "available") {
+    return Object.freeze({
+      id: "dis",
+      title: "Divine Influence System points (DIS)",
+      balance: 9,
+      availability: "available",
+      availabilityLabel: "Active divine ledger",
+      summary:
+        "DIS supports seat-scale and near-seat actions such as temporary buffs, regional shaping, and dungeon creation for chaos sealing.",
+      authorityBoundary,
+      recentIncome: Object.freeze([
+        createPointsEntry("Seat harmonics tithe", 4, "dis"),
+        createPointsEntry("Stability rite completion", 3, "dis"),
+      ]),
+      recentOutgoings: Object.freeze([
+        createPointsEntry("Chaos-seal preparation", -2, "dis"),
+      ]),
+      committedSpend: Object.freeze([
+        createPointsEntry("Regional shaping reserve", 5, "dis"),
+      ]),
+      actions: Object.freeze([
+        createPointsSpendSurface(
+          "commit-divine-seat-action",
+          "Commit divine seat action",
+          5,
+          "Requires divine-band seat access and a reviewed high-order target.",
+          "Consumes harmonic capital for a seat-scale action and may still introduce seat-risk if misused."
+        ),
+      ]),
+    });
+  }
+
+  return Object.freeze({
+    id: "dis",
+    title: "Divine Influence System points (DIS)",
+    balance: 0,
+    availability: "locked",
+    availabilityLabel: "Locked until divine-band seat access",
+    summary:
+      "DIS is visible as a future high-order ledger, but it remains non-actionable until divine-band authority is unlocked.",
+    authorityBoundary,
+    recentIncome: Object.freeze([]),
+    recentOutgoings: Object.freeze([]),
+    committedSpend: Object.freeze([]),
+    actions: Object.freeze([
+      createPointsSpendSurface(
+        "divine-actions-locked",
+        "Divine actions remain locked",
+        null,
+        "Unlock seat-scale authority before attempting regional shaping or dungeon creation.",
+        "Prevents divine spend from appearing as a generic progression currency."
+      ),
+    ]),
+  });
+}
+
+export function createPlayerSystemPointsStoreState(
+  input: CreatePlayerSystemPointsStoreStateInput
+): PlayerSystemPointsStoreState {
+  const ppBalance = input.ppBalance ?? 18;
+  const devolutionUnavailableReason =
+    input.evolutionStage !== "proto-social"
+      ? "The proto-social window is closed after social-form lock, so the return-to-slime path is no longer available."
+      : input.devolutionAlreadyUsed
+        ? "The bounded return-to-slime path has already been spent for this player."
+        : ppBalance < 12
+          ? "At least 12 PP is required before the bounded return-to-slime path can execute."
+          : null;
+
+  return Object.freeze({
+    featureFlagId: PLAYER_SYSTEM_POINTS_STORE_FEATURE_FLAG_ID,
+    evolutionStage: input.evolutionStage,
+    authorityBand: input.authorityBand,
+    ledgers: Object.freeze([
+      buildPpLedger(input.authorityBand, ppBalance),
+      buildEspLedger(input.authorityBand),
+      buildTisLedger(input.authorityBand),
+      buildDisLedger(input.authorityBand),
+    ]),
+    devolutionAction: Object.freeze({
+      available: devolutionUnavailableReason === null,
+      cost: 12,
+      prerequisite:
+        "Only available before social-form lock while the proto-social second-stage window remains open.",
+      consequence:
+        "Returns the player to slime once, resets the pending social-form path, and interrupts the current mission chain until the new form is stabilized.",
+      executionState:
+        devolutionUnavailableReason === null
+          ? "eligible"
+          : input.evolutionStage !== "proto-social"
+            ? "window-closed"
+            : input.devolutionAlreadyUsed
+              ? "already-used"
+              : "insufficient-balance",
+      unavailableReason: devolutionUnavailableReason,
+    }),
+  });
 }
 
 export function createPlayerSystemSessionState(
