@@ -26,6 +26,7 @@ npm install @plasius/player-system
 - focus and combat-safe state
 - preference-learning signal capture
 - module orchestration metadata
+- points-store ledger orchestration and bounded proto-social devolution eligibility
 - event-log and achievement read-model contracts
 - timeout, cancellation, and bounded-failure contracts for async coordination
 - transition/update budgets that downstream renderers can validate against
@@ -46,6 +47,7 @@ node demo/example.mjs
 ```ts
 import {
   PLAYER_SYSTEM_FEATURE_FLAG_ID,
+  createPlayerSystemPointsStoreState,
   defaultPlayerSystemRuntimeContract,
   defaultPlayerSystemRuntimePortabilityContract,
   createPlayerSystemSessionState,
@@ -62,6 +64,12 @@ console.log(packageDescriptor.packageName, PLAYER_SYSTEM_FEATURE_FLAG_ID);
 console.log(session.mode);
 console.log(defaultPlayerSystemRuntimeContract.timeoutBudget.transitionMs);
 console.log(defaultPlayerSystemRuntimePortabilityContract.sessionData.allowedSessionFields);
+console.log(
+  createPlayerSystemPointsStoreState({
+    evolutionStage: "proto-social",
+    authorityBand: "civic",
+  }).devolutionAction.available
+);
 ```
 
 ## Runtime NFR Contract
@@ -87,6 +95,18 @@ The inherited feature flag for this work is `isekai.player-system.runtime-portab
 - sensitive account or token fields remain forbidden at the package boundary
 - multi-module and multi-pane compositions stay inside documented concurrency budgets
 - host integrations provide portable adapters instead of coupling to one renderer or storage topology
+
+## Points Store Orchestration
+
+The inherited feature flag for this work is
+`isekai.player-system.points-store.enabled`.
+
+`createPlayerSystemPointsStoreState()` provides:
+
+- explicit `pp`, `esp`, `tis`, and `dis` ledger state with immutable income, outgoing, and committed-spend records
+- authority-band aware gating so TIS and DIS only become spendable when the correct civic or divine boundary is active
+- proto-social devolution eligibility and execution-state modeling, including social-lock closure, single-use exhaustion, and PP balance checks
+- non-rendering state that matches the site-facing vocabulary closely enough for later consumer cutover without embedding renderer logic here
 
 ## Governance
 
