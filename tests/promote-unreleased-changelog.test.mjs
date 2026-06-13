@@ -10,7 +10,7 @@ All notable changes to this project will be documented in this file.
 
 ## Unrelated
 
-## [Unreleased]
+## Unreleased
 - add release automation
 - fix publish gating
 `;
@@ -21,7 +21,7 @@ All notable changes to this project will be documented in this file.
       repository: "example/player-system",
     });
 
-    expect(output).toContain("## [Unreleased]");
+    expect(output).toContain("## Unreleased");
     expect(output).toContain("## [0.1.5] - 2026-06-13");
     expect(output).toContain("- add release automation");
     expect(output).toContain("- **Added**");
