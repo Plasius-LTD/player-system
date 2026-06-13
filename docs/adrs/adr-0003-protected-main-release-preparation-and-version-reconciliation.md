@@ -20,7 +20,7 @@ Without reconciling package, tag, and npm state first, future release attempts c
 Protected `main` releases will use a two-phase workflow:
 
 1. `workflow_dispatch` prepares a `release/vX.Y.Z` branch and PR from `main`.
-2. Merging that PR back to `main` triggers the publish job, which tags, drafts the GitHub release, publishes to npm, and then publishes the GitHub release.
+2. Merging that PR back to `main` makes the unpublished versioned metadata available on `main`, where the publish job can tag, draft the GitHub release, publish to npm, and then publish the GitHub release.
 
 Release preparation must derive its base version from the highest known semantic version across:
 
@@ -41,6 +41,7 @@ Release preparation must create the `release/vX.Y.Z` branch from the currently c
 - Release metadata now flows through an approved pull-request path instead of an unauthorized direct push to protected `main`.
 - Stale tags and lagging repository versions no longer block the next valid release number.
 - The release-preparation commit always carries the versioned changelog section that the publish gate requires on `main`.
+- Publish no longer depends on merge-commit text matching a release prefix; it keys off unpublished versioned metadata on `main` instead.
 - The version-selection logic is isolated in a helper with regression tests so future release-drift bugs are easier to catch locally.
 
 ## Alternatives considered
