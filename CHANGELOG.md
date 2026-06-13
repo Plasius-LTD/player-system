@@ -12,3 +12,4 @@ All notable changes to this project will be documented in this file.
 - harden public package verification so published entrypoints must be built and included in the package tarball
 - move npm publication to a protected-main-safe release-prep PR workflow with reconciled package, tag, and npm version state
 - preserve release-branch version and changelog edits so protected-main publish runs can complete from prepared metadata on `main`
+- detect unpublished prepared releases from `main` metadata instead of merge-commit titles so merged release PRs actually publish
