@@ -208,12 +208,23 @@ jobs:
           EOF
           )
 
-          PR_URL=$(gh pr create \
-            --repo "${GITHUB_REPOSITORY}" \
-            --base main \
-            --head "${BRANCH}" \
-            --title "chore: prepare release ${TAG}" \
-            --body "${PR_BODY}")
+          PR_URL="$(gh pr list --repo "${GITHUB_REPOSITORY}" --head "${BRANCH}" --json url --jq '.[0].url')"
+          if [ -z "${PR_URL}" ] || [ "${PR_URL}" = "null" ]; then
+            if ! PR_URL=$(gh pr create \
+              --repo "${GITHUB_REPOSITORY}" \
+              --base main \
+              --head "${BRANCH}" \
+              --title "chore: prepare release ${TAG}" \
+              --body "${PR_BODY}" 2>pr-create-error.log); then
+              if grep -q "GitHub Actions is not permitted to create or approve pull requests" pr-create-error.log; then
+                PR_URL="https://github.com/${GITHUB_REPOSITORY}/pull/new/${BRANCH}"
+                echo "::warning::GitHub Actions cannot create pull requests in this repository. Open ${PR_URL} manually."
+              else
+                cat pr-create-error.log >&2
+                exit 1
+              fi
+            fi
+          fi
 
           echo "branch=${BRANCH}" >> "${GITHUB_OUTPUT}"
           echo "base_version=${HIGHEST_KNOWN_VERSION}" >> "${GITHUB_OUTPUT}"
