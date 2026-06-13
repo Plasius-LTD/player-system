@@ -36,7 +36,7 @@ When a release version is already present on `main`, operators may run the workf
 
 Release preparation must create the `release/vX.Y.Z` branch from the currently checked out commit before committing version and changelog edits so those metadata changes are preserved on the release branch instead of being discarded by a reset to `origin/main`.
 
-Release preparation must also detect the `## [Unreleased]` heading using shell-compatible changelog patterns so the versioned release section is actually promoted into the release-preparation commit.
+Release preparation must promote the `## [Unreleased]` section through a tested helper instead of fragile inline shell text processing so the versioned release section is actually written into the release-preparation commit.
 
 ## Consequences
 
@@ -44,7 +44,7 @@ Release preparation must also detect the `## [Unreleased]` heading using shell-c
 - Stale tags and lagging repository versions no longer block the next valid release number.
 - The release-preparation commit always carries the versioned changelog section that the publish gate requires on `main`.
 - Publish no longer depends on merge-commit text matching a release prefix; it keys off unpublished versioned metadata on `main` instead.
-- Changelog promotion now uses shell patterns that match the checked-in Markdown headings, preventing silent release-prep commits that only bump `package.json`.
+- Changelog promotion now runs through a tested helper, preventing silent release-prep commits that only bump `package.json`.
 - The version-selection logic is isolated in a helper with regression tests so future release-drift bugs are easier to catch locally.
 
 ## Alternatives considered
