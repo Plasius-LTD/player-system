@@ -118,7 +118,7 @@ The inherited feature flag for this work is
 
 Protected `main` releases use a two-step flow:
 
-1. Run `.github/workflows/cd.yml` with `bump=patch|minor|major` to push a `release/vX.Y.Z` prep branch and, when repository settings allow it, open the matching PR from `main`.
+1. Run `.github/workflows/cd.yml` with `bump=patch|minor|major` to push a `release/vX.Y.Z` prep branch and, when repository settings allow it, open the matching PR from `main`. The workflow creates that branch before committing the versioned `package.json` and `CHANGELOG.md` updates so the release metadata is preserved for review and publish.
 2. Merge that PR to `main` so the push-triggered publish job can tag the release, publish to npm, and publish the GitHub release.
 
 If a release version is already prepared on `main` and only publication remains, rerun `.github/workflows/cd.yml` with `bump=none` to publish the current version from `main` without creating a new release branch.

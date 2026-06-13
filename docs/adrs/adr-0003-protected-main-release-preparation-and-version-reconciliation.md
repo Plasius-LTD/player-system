@@ -34,10 +34,13 @@ When repository settings prevent GitHub Actions from creating pull requests, the
 
 When a release version is already present on `main`, operators may run the workflow with `bump: none` to publish that prepared version directly without opening another release-preparation branch.
 
+Release preparation must create the `release/vX.Y.Z` branch from the currently checked out commit before committing version and changelog edits so those metadata changes are preserved on the release branch instead of being discarded by a reset to `origin/main`.
+
 ## Consequences
 
 - Release metadata now flows through an approved pull-request path instead of an unauthorized direct push to protected `main`.
 - Stale tags and lagging repository versions no longer block the next valid release number.
+- The release-preparation commit always carries the versioned changelog section that the publish gate requires on `main`.
 - The version-selection logic is isolated in a helper with regression tests so future release-drift bugs are easier to catch locally.
 
 ## Alternatives considered
