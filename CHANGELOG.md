@@ -10,3 +10,4 @@ All notable changes to this project will be documented in this file.
 - add explicit session-data minimization, composition-scale, and portable seam contracts under `isekai.player-system.runtime-portability.enabled`
 - add points-store runtime orchestration under `isekai.player-system.points-store.enabled`, including PP/ESP/TIS/DIS ledger state, proto-social devolution eligibility, and civic/divine authority-boundary gating
 - harden public package verification so published entrypoints must be built and included in the package tarball
+- move npm publication to a protected-main-safe release-prep PR workflow with reconciled package, tag, and npm version state
