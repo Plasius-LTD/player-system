@@ -32,6 +32,8 @@ The workflow will then apply the requested bump on top of that reconciled base s
 
 When repository settings prevent GitHub Actions from creating pull requests, the workflow will still push the release-preparation branch and emit the manual PR URL instead of failing the run.
 
+When a release version is already present on `main`, operators may run the workflow with `bump: none` to publish that prepared version directly without opening another release-preparation branch.
+
 ## Consequences
 
 - Release metadata now flows through an approved pull-request path instead of an unauthorized direct push to protected `main`.

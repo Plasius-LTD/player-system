@@ -121,6 +121,8 @@ Protected `main` releases use a two-step flow:
 1. Run `.github/workflows/cd.yml` with `bump=patch|minor|major` to push a `release/vX.Y.Z` prep branch and, when repository settings allow it, open the matching PR from `main`.
 2. Merge that PR to `main` so the push-triggered publish job can tag the release, publish to npm, and publish the GitHub release.
 
+If a release version is already prepared on `main` and only publication remains, rerun `.github/workflows/cd.yml` with `bump=none` to publish the current version from `main` without creating a new release branch.
+
 The Event Log and Achievement runtime boundary is documented in:
 
 - [Player System Event Log and Achievement Read Model](./docs/design/0002-event-log-and-achievement-read-model.md)
