@@ -49,10 +49,11 @@ export function promoteUnreleasedChangelog(content, options) {
     return content;
   }
 
-  const unreleasedMatch = content.match(/^## \[Unreleased\]$/m);
+  const unreleasedMatch = content.match(/^## (?:\[Unreleased\]|Unreleased)$/m);
   if (!unreleasedMatch || unreleasedMatch.index === undefined) {
     return content;
   }
+  const unreleasedHeading = unreleasedMatch[0];
 
   const before = content.slice(0, unreleasedMatch.index);
   const afterHeading = content.slice(
@@ -74,7 +75,7 @@ export function promoteUnreleasedChangelog(content, options) {
 
   let nextContent = [
     before.trimEnd(),
-    "## [Unreleased]",
+    unreleasedHeading,
     "",
     PLACEHOLDER_BODY,
     "",
