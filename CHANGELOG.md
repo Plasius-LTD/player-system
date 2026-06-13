@@ -13,3 +13,4 @@ All notable changes to this project will be documented in this file.
 - move npm publication to a protected-main-safe release-prep PR workflow with reconciled package, tag, and npm version state
 - preserve release-branch version and changelog edits so protected-main publish runs can complete from prepared metadata on `main`
 - detect unpublished prepared releases from `main` metadata instead of merge-commit titles so merged release PRs actually publish
+- promote `Unreleased` changelog entries into versioned release sections with shell-compatible heading detection

@@ -128,9 +128,9 @@ jobs:
             DATE=$(date -u +%Y-%m-%d)
             VERSION_LINE="## [${NEXT_VERSION}] - ${DATE}"
 
-            UNREL_START=$(grep -n '^## \\[Unreleased\\]' "${FILE}" | cut -d: -f1 || true)
+            UNREL_START=$(grep -n '^## \[Unreleased\]' "${FILE}" | cut -d: -f1 || true)
             if [ -n "${UNREL_START}" ]; then
-              NEXT_HDR=$(awk 'NR>'"${UNREL_START}"' && /^## \\[/{print NR; exit}' "${FILE}")
+              NEXT_HDR=$(awk 'NR>'"${UNREL_START}"' && /^## \[/{print NR; exit}' "${FILE}")
               if [ -z "${NEXT_HDR}" ]; then
                 NEXT_HDR=$(wc -l < "${FILE}")
                 NEXT_HDR=$((NEXT_HDR + 1))
