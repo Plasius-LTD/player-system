@@ -13,6 +13,19 @@ All notable changes to this project will be documented in this file.
 
 - **Security**
   - (placeholder)
+## [0.1.6] - 2026-06-14
+- **Added**
+  - (placeholder)
+
+- **Changed**
+  - (placeholder)
+
+- **Fixed**
+  - (placeholder)
+
+- **Security**
+  - (placeholder)
+
 ## [0.1.5] - 2026-06-13
 - bootstrap `@plasius/player-system` from the schema package baseline with package governance, docs, tests, and demo scaffolding
 - document the Event Log and Achievement runtime boundary for curated blob-backed read models, including matching design, ADR, and TDR records
