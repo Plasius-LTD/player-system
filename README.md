@@ -26,6 +26,7 @@ npm install @plasius/player-system
 - focus and combat-safe state
 - preference-learning signal capture
 - module orchestration metadata
+- points-store ledger orchestration and bounded proto-social devolution eligibility
 - event-log and achievement read-model contracts
 - timeout, cancellation, and bounded-failure contracts for async coordination
 - transition/update budgets that downstream renderers can validate against
@@ -50,6 +51,7 @@ import {
   createPlayerSystemTrainingAuthorityHandoff,
   createPlayerSystemTrainingInstitutionReadiness,
   createPlayerSystemTrainingRoutingState,
+  createPlayerSystemPointsStoreState,
   defaultPlayerSystemRuntimeContract,
   defaultPlayerSystemRuntimePortabilityContract,
   createPlayerSystemSessionState,
@@ -107,6 +109,12 @@ const trainingRouting = createPlayerSystemTrainingRoutingState({
 
 console.log(trainingRouting.recommendation.routeId);
 console.log(trainingRouting.blockedPrerequisites.length);
+console.log(
+  createPlayerSystemPointsStoreState({
+    evolutionStage: "proto-social",
+    authorityBand: "civic",
+  }).devolutionAction.available
+);
 ```
 
 ## Runtime NFR Contract
@@ -148,12 +156,32 @@ The inherited feature flag for this work is
 - authority-safe handoff summaries for training plus spellcraft, item-crafting, dungeon-crafting, or interim commerce surfaces
 - runtime validation for institution, focus, authority, and required string inputs with stable fail-closed errors
 - immutable routing snapshots so host-side post-call mutations cannot leak back into returned readiness or handoff state
+## Points Store Orchestration
+
+The inherited feature flag for this work is
+`isekai.player-system.points-store.enabled`.
+
+`createPlayerSystemPointsStoreState()` provides:
+
+- explicit `pp`, `esp`, `tis`, and `dis` ledger state with immutable income, outgoing, and committed-spend records
+- authority-band aware gating so TIS and DIS only become spendable when the correct civic or divine boundary is active
+- proto-social devolution eligibility and execution-state modeling, including social-lock closure, single-use exhaustion, and PP balance checks
+- non-rendering state that matches the site-facing vocabulary closely enough for later consumer cutover without embedding renderer logic here
 
 ## Governance
 
 - ADRs: [docs/adrs](./docs/adrs)
 - TDRs: [docs/tdrs](./docs/tdrs)
 - Design notes: [docs/design](./docs/design)
+
+## Release Workflow
+
+Protected `main` releases use a two-step flow:
+
+1. Run `.github/workflows/cd.yml` with `bump=patch|minor|major` to push a `release/vX.Y.Z` prep branch and, when repository settings allow it, open the matching PR from `main`. The workflow creates that branch before committing the versioned `package.json` and `CHANGELOG.md` updates, and a tested helper promotes the current `Unreleased` section into the matching version header so the release metadata is preserved for review and publish.
+2. Merge that PR to `main` so the next `main` push can detect the unpublished versioned metadata, tag the release, publish to npm, and publish the GitHub release.
+
+If a release version is already prepared on `main` and only publication remains, rerun `.github/workflows/cd.yml` with `bump=none` to publish the current version from `main` without creating a new release branch.
 
 The Event Log and Achievement runtime boundary is documented in:
 

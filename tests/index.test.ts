@@ -1,4 +1,5 @@
 import {
+  PLAYER_SYSTEM_POINTS_STORE_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_PACKAGES_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_RUNTIME_NFR_FEATURE_FLAG_ID,
@@ -8,11 +9,14 @@ import {
   createPlayerSystemTrainingAuthorityHandoff,
   createPlayerSystemTrainingInstitutionReadiness,
   createPlayerSystemTrainingRoutingState,
+  createPlayerSystemPointsStoreState,
   createPlayerSystemSessionState,
   createPlayerSystemRuntimeContract,
   createPlayerSystemRuntimePortabilityContract,
   defaultPlayerSystemRuntimeContract,
   defaultPlayerSystemRuntimePortabilityContract,
+  isPlayerSystemAuthorityBand,
+  isPlayerSystemEvolutionStage,
   isPlayerSystemModule,
   isPlayerSystemMode,
   packageDescriptor,
@@ -77,6 +81,138 @@ describe("@plasius/player-system", () => {
     expect(isPlayerSystemModule("tutorial")).toBe(true);
     expect(isPlayerSystemModule("points-store")).toBe(true);
     expect(isPlayerSystemModule("invalid")).toBe(false);
+  });
+
+  it("guards the points-store runtime selectors", () => {
+    expect(isPlayerSystemEvolutionStage("proto-social")).toBe(true);
+    expect(isPlayerSystemEvolutionStage("social-lock")).toBe(true);
+    expect(isPlayerSystemEvolutionStage("unknown")).toBe(false);
+    expect(isPlayerSystemAuthorityBand("frontier")).toBe(true);
+    expect(isPlayerSystemAuthorityBand("civic")).toBe(true);
+    expect(isPlayerSystemAuthorityBand("divine")).toBe(true);
+    expect(isPlayerSystemAuthorityBand("self")).toBe(false);
+  });
+
+  it("models multi-ledger points-store state behind the inherited feature flag", () => {
+    const state = createPlayerSystemPointsStoreState({
+      evolutionStage: "proto-social",
+      authorityBand: "civic",
+    });
+
+    expect(state.featureFlagId).toBe(PLAYER_SYSTEM_POINTS_STORE_FEATURE_FLAG_ID);
+    expect(state.ledgers.map((ledger) => ledger.id)).toEqual([
+      "pp",
+      "esp",
+      "tis",
+      "dis",
+    ]);
+    expect(state.ledgers.find((ledger) => ledger.id === "pp")).toMatchObject({
+      balance: 18,
+      authorityBoundary: {
+        state: "self",
+        canSpend: true,
+      },
+    });
+    expect(state.ledgers.find((ledger) => ledger.id === "tis")).toMatchObject({
+      availability: "available",
+      authorityBoundary: {
+        state: "available",
+        canSpend: true,
+        requiredBand: "civic",
+      },
+    });
+    expect(Object.isFrozen(state.ledgers)).toBe(true);
+    expect(Object.isFrozen(state.ledgers[0]?.actions)).toBe(true);
+  });
+
+  it("gates proto-social devolution by stage, single-use state, and PP balance", () => {
+    const eligible = createPlayerSystemPointsStoreState({
+      evolutionStage: "proto-social",
+      authorityBand: "frontier",
+    });
+    const closedWindow = createPlayerSystemPointsStoreState({
+      evolutionStage: "social-lock",
+      authorityBand: "frontier",
+    });
+    const alreadyUsed = createPlayerSystemPointsStoreState({
+      evolutionStage: "proto-social",
+      authorityBand: "frontier",
+      devolutionAlreadyUsed: true,
+    });
+    const insufficientBalance = createPlayerSystemPointsStoreState({
+      evolutionStage: "proto-social",
+      authorityBand: "frontier",
+      ppBalance: 10,
+    });
+
+    expect(eligible.devolutionAction).toMatchObject({
+      available: true,
+      executionState: "eligible",
+      cost: 12,
+    });
+    expect(closedWindow.devolutionAction).toMatchObject({
+      available: false,
+      executionState: "window-closed",
+    });
+    expect(alreadyUsed.devolutionAction).toMatchObject({
+      available: false,
+      executionState: "already-used",
+    });
+    expect(insufficientBalance.devolutionAction).toMatchObject({
+      available: false,
+      executionState: "insufficient-balance",
+    });
+  });
+
+  it("integrates TIS and DIS authority-boundary checks across authority bands", () => {
+    const frontier = createPlayerSystemPointsStoreState({
+      evolutionStage: "proto-social",
+      authorityBand: "frontier",
+    });
+    const civic = createPlayerSystemPointsStoreState({
+      evolutionStage: "proto-social",
+      authorityBand: "civic",
+    });
+    const divine = createPlayerSystemPointsStoreState({
+      evolutionStage: "proto-social",
+      authorityBand: "divine",
+    });
+
+    expect(frontier.ledgers.find((ledger) => ledger.id === "tis")).toMatchObject({
+      availability: "locked",
+      authorityBoundary: {
+        canSpend: false,
+        state: "locked",
+      },
+    });
+    expect(civic.ledgers.find((ledger) => ledger.id === "tis")).toMatchObject({
+      availability: "available",
+      authorityBoundary: {
+        canSpend: true,
+        state: "available",
+      },
+    });
+    expect(divine.ledgers.find((ledger) => ledger.id === "tis")).toMatchObject({
+      availability: "historical",
+      authorityBoundary: {
+        canSpend: false,
+        state: "historical",
+      },
+    });
+    expect(civic.ledgers.find((ledger) => ledger.id === "dis")).toMatchObject({
+      availability: "locked",
+      authorityBoundary: {
+        canSpend: false,
+        state: "locked",
+      },
+    });
+    expect(divine.ledgers.find((ledger) => ledger.id === "dis")).toMatchObject({
+      availability: "available",
+      authorityBoundary: {
+        canSpend: true,
+        state: "available",
+      },
+    });
   });
 
   it("exports runtime NFR defaults behind the inherited feature flag", () => {
