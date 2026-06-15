@@ -146,6 +146,8 @@ The inherited feature flag for this work is
 - explicit blocked prerequisite explanations, including trust and mission gates when provided by the caller
 - focus-aware routing that distinguishes internalized, externalized, and hybrid growth leanings
 - authority-safe handoff summaries for training plus spellcraft, item-crafting, dungeon-crafting, or interim commerce surfaces
+- runtime validation for institution, focus, authority, and required string inputs with stable fail-closed errors
+- immutable routing snapshots so host-side post-call mutations cannot leak back into returned readiness or handoff state
 
 ## Governance
 

@@ -1,6 +1,7 @@
-import type {
-  MccExpressionTrack,
-  TrainingInstitutionType,
+import {
+  isMccExpressionTrack,
+  type MccExpressionTrack,
+  type TrainingInstitutionType,
 } from "@plasius/training";
 
 export interface PackageDescriptor {
@@ -470,6 +471,99 @@ const ROUTE_PRIORITY_BY_FOCUS: Record<
   ),
 });
 
+const SUPPORTED_TRAINING_INSTITUTIONS = Object.freeze([
+  "school",
+  "barracks",
+  "academy",
+  "apprenticeship",
+] satisfies TrainingInstitutionType[]);
+
+const SUPPORTED_TRAINING_AUTHORITIES = Object.freeze([
+  "training",
+  "commerce",
+  "spellcraft",
+  "item-crafting",
+  "dungeon-crafting",
+] satisfies PlayerSystemTrainingAuthorityId[]);
+
+function freezeReadonlyArray<T>(items: readonly T[]): readonly T[] {
+  return Object.freeze([...items]);
+}
+
+function assertBoolean(value: unknown, label: string): asserts value is boolean {
+  if (typeof value !== "boolean") {
+    throw new Error(`${label} must be a boolean`);
+  }
+}
+
+function assertNonEmptyString(value: unknown, label: string): string {
+  if (typeof value !== "string") {
+    throw new Error(`${label} must be a non-empty string`);
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    throw new Error(`${label} must be a non-empty string`);
+  }
+
+  return trimmed;
+}
+
+function isTrainingInstitutionType(value: string): value is TrainingInstitutionType {
+  return SUPPORTED_TRAINING_INSTITUTIONS.includes(value as TrainingInstitutionType);
+}
+
+function assertTrainingInstitutionType(
+  value: unknown,
+  label: string
+): asserts value is TrainingInstitutionType {
+  if (typeof value !== "string" || !isTrainingInstitutionType(value)) {
+    throw new Error(`${label} must be a supported training institution`);
+  }
+}
+
+function isPlayerSystemTrainingAuthorityId(
+  value: string
+): value is PlayerSystemTrainingAuthorityId {
+  return SUPPORTED_TRAINING_AUTHORITIES.includes(
+    value as PlayerSystemTrainingAuthorityId
+  );
+}
+
+function assertPlayerSystemTrainingAuthorityId(
+  value: unknown,
+  label: string
+): asserts value is PlayerSystemTrainingAuthorityId {
+  if (typeof value !== "string" || !isPlayerSystemTrainingAuthorityId(value)) {
+    throw new Error(`${label} must be a supported training authority`);
+  }
+}
+
+function cloneSupportedTracks(
+  supportedTracks: readonly MccExpressionTrack[] | undefined,
+  institutionId: TrainingInstitutionType
+): readonly MccExpressionTrack[] {
+  const normalizedTracks = supportedTracks
+    ? [...supportedTracks]
+    : [...DEFAULT_TRACK_SUPPORT_BY_INSTITUTION[institutionId]];
+
+  if (normalizedTracks.length === 0) {
+    throw new Error(
+      "supportedTracks must contain at least one supported MCC expression track"
+    );
+  }
+
+  for (const track of normalizedTracks) {
+    if (!isMccExpressionTrack(track)) {
+      throw new Error(
+        "supportedTracks must contain only supported MCC expression tracks"
+      );
+    }
+  }
+
+  return freezeReadonlyArray(normalizedTracks);
+}
+
 function normalizeNullableString(value: string | null | undefined): string | null {
   if (typeof value !== "string") {
     return null;
@@ -482,16 +576,19 @@ function normalizeNullableString(value: string | null | undefined): string | nul
 export function createPlayerSystemTrainingInstitutionReadiness(
   input: PlayerSystemTrainingInstitutionReadinessInput
 ): PlayerSystemTrainingInstitutionReadiness {
+  assertTrainingInstitutionType(input.institutionId, "institutionId");
+  assertBoolean(input.ready, "ready");
+
   return Object.freeze({
     institutionId: input.institutionId,
     ready: input.ready,
-    label: input.label,
-    requirement: input.requirement,
-    reason: input.reason,
-    supportedTracks: Object.freeze([
-      ...(input.supportedTracks ??
-        DEFAULT_TRACK_SUPPORT_BY_INSTITUTION[input.institutionId]),
-    ]),
+    label: assertNonEmptyString(input.label, "label"),
+    requirement: assertNonEmptyString(input.requirement, "requirement"),
+    reason: assertNonEmptyString(input.reason, "reason"),
+    supportedTracks: cloneSupportedTracks(
+      input.supportedTracks,
+      input.institutionId
+    ),
     trustRequirement: normalizeNullableString(input.trustRequirement),
     missionRequirement: normalizeNullableString(input.missionRequirement),
   });
@@ -500,12 +597,15 @@ export function createPlayerSystemTrainingInstitutionReadiness(
 export function createPlayerSystemTrainingAuthorityHandoff(
   input: PlayerSystemTrainingAuthorityHandoffInput
 ): PlayerSystemTrainingAuthorityHandoff {
+  assertPlayerSystemTrainingAuthorityId(input.authorityId, "authorityId");
+  assertBoolean(input.eligible, "eligible");
+
   return Object.freeze({
     authorityId: input.authorityId,
     eligible: input.eligible,
-    label: input.label,
-    handoffSurface: input.handoffSurface,
-    reason: input.reason,
+    label: assertNonEmptyString(input.label, "label"),
+    handoffSurface: assertNonEmptyString(input.handoffSurface, "handoffSurface"),
+    reason: assertNonEmptyString(input.reason, "reason"),
     requirement: normalizeNullableString(input.requirement),
   });
 }
@@ -554,11 +654,33 @@ function resolveTrainingRecommendation(
 export function createPlayerSystemTrainingRoutingState(
   input: PlayerSystemTrainingRoutingInput
 ): PlayerSystemTrainingRoutingState {
+  if (!isMccExpressionTrack(input.growthFocus)) {
+    throw new Error("growthFocus must be a supported MCC expression track");
+  }
+
+  if (!Array.isArray(input.institutionReadiness)) {
+    throw new Error("institutionReadiness must be an array");
+  }
+
+  if (!Array.isArray(input.authorityEligibility)) {
+    throw new Error("authorityEligibility must be an array");
+  }
+
+  const institutionReadiness = freezeReadonlyArray(
+    input.institutionReadiness.map((entry) =>
+      createPlayerSystemTrainingInstitutionReadiness(entry)
+    )
+  );
+  const authorityEligibility = freezeReadonlyArray(
+    input.authorityEligibility.map((entry) =>
+      createPlayerSystemTrainingAuthorityHandoff(entry)
+    )
+  );
   const readyInstitutions = Object.freeze(
-    input.institutionReadiness.filter((entry) => entry.ready)
+    institutionReadiness.filter((entry) => entry.ready)
   );
   const blockedPrerequisites = Object.freeze(
-    input.institutionReadiness
+    institutionReadiness
       .filter((entry) => !entry.ready)
       .map((entry) =>
         Object.freeze({
@@ -572,20 +694,15 @@ export function createPlayerSystemTrainingRoutingState(
       )
   );
   const trainingAuthority =
-    input.authorityEligibility.find((entry) => entry.authorityId === "training") ??
+    authorityEligibility.find((entry) => entry.authorityId === "training") ??
     null;
   const craftingAuthorities = Object.freeze(
-    input.authorityEligibility.filter(
-      (entry) => entry.authorityId !== "training"
-    )
+    authorityEligibility.filter((entry) => entry.authorityId !== "training")
   );
 
   return Object.freeze({
     featureFlagId: PLAYER_SYSTEM_TRAINING_ROUTING_FEATURE_FLAG_ID,
-    recommendation: resolveTrainingRecommendation(
-      input.growthFocus,
-      input.institutionReadiness
-    ),
+    recommendation: resolveTrainingRecommendation(input.growthFocus, institutionReadiness),
     readyInstitutions,
     blockedPrerequisites,
     trainingAuthority,

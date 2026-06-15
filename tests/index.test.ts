@@ -413,4 +413,115 @@ describe("@plasius/player-system", () => {
       routingState.craftingAuthorities.map((authority) => authority.authorityId)
     ).toEqual(["spellcraft", "item-crafting"]);
   });
+
+  it("fails closed for invalid JavaScript-style training-routing inputs", () => {
+    expect(() =>
+      createPlayerSystemTrainingInstitutionReadiness({
+        institutionId: "dojo" as never,
+        ready: true,
+        label: "Barracks readiness",
+        requirement: "Requires a guild-cleared stage.",
+        reason: "stage-unlocked",
+      })
+    ).toThrow("institutionId must be a supported training institution");
+
+    expect(() =>
+      createPlayerSystemTrainingInstitutionReadiness({
+        institutionId: "academy",
+        ready: true,
+        label: "  ",
+        requirement: "Requires an academy-candidate stage.",
+        reason: "stage-unlocked",
+      })
+    ).toThrow("label must be a non-empty string");
+
+    expect(() =>
+      createPlayerSystemTrainingInstitutionReadiness({
+        institutionId: "academy",
+        ready: true,
+        label: "Academy readiness",
+        requirement: "Requires an academy-candidate stage.",
+        reason: "stage-unlocked",
+        supportedTracks: ["invalid-track" as never],
+      })
+    ).toThrow("supportedTracks must contain only supported MCC expression tracks");
+
+    expect(() =>
+      createPlayerSystemTrainingAuthorityHandoff({
+        authorityId: "alchemy" as never,
+        eligible: true,
+        label: "Spellcraft handoff",
+        handoffSurface: "player-system:spellcraft",
+        reason: "institution-ready",
+      })
+    ).toThrow("authorityId must be a supported training authority");
+
+    expect(() =>
+      createPlayerSystemTrainingRoutingState({
+        growthFocus: "invalid-focus" as never,
+        institutionReadiness: [],
+        authorityEligibility: [],
+      })
+    ).toThrow("growthFocus must be a supported MCC expression track");
+  });
+
+  it("returns immutable routing snapshots instead of caller-owned nested objects", () => {
+    const institutionReadiness: Array<Record<string, unknown>> = [
+      {
+        institutionId: "academy",
+        ready: true,
+        label: "Academy readiness",
+        requirement: "Requires an academy-candidate stage.",
+        reason: "stage-unlocked",
+        supportedTracks: ["internalized", "hybrid"],
+        trustRequirement: "Maintain instructor trust rank two.",
+        missionRequirement: null,
+      },
+    ];
+    const authorityEligibility: Array<Record<string, unknown>> = [
+      {
+        authorityId: "training",
+        eligible: true,
+        label: "Institution training handoff",
+        handoffSurface: "player-system:training",
+        reason: "institution-ready",
+        requirement: null,
+      },
+      {
+        authorityId: "spellcraft",
+        eligible: true,
+        label: "Spellcraft handoff",
+        handoffSurface: "player-system:spellcraft",
+        reason: "institution-ready",
+        requirement: "Complete academy induction.",
+      },
+    ];
+
+    const routingState = createPlayerSystemTrainingRoutingState({
+      growthFocus: "internalized",
+      institutionReadiness: institutionReadiness as never,
+      authorityEligibility: authorityEligibility as never,
+    });
+    const readinessEntry = institutionReadiness[0]!;
+    const trainingAuthorityEntry = authorityEligibility[0]!;
+    const craftingAuthorityEntry = authorityEligibility[1]!;
+    const readyInstitution = routingState.readyInstitutions[0]!;
+    const trainingAuthority = routingState.trainingAuthority!;
+    const craftingAuthority = routingState.craftingAuthorities[0]!;
+
+    readinessEntry.label = "Mutated readiness label";
+    (readinessEntry.supportedTracks as string[]).push("externalized");
+    craftingAuthorityEntry.label = "Mutated authority label";
+
+    expect(readyInstitution).not.toBe(readinessEntry);
+    expect(trainingAuthority).not.toBe(trainingAuthorityEntry);
+    expect(craftingAuthority).not.toBe(craftingAuthorityEntry);
+    expect(readyInstitution.label).toBe("Academy readiness");
+    expect(readyInstitution.supportedTracks).toEqual([
+      "internalized",
+      "hybrid",
+    ]);
+    expect(craftingAuthority.label).toBe("Spellcraft handoff");
+    expect(Object.isFrozen(readyInstitution.supportedTracks)).toBe(true);
+  });
 });
