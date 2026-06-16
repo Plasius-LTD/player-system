@@ -1,3 +1,9 @@
+import {
+  isMccExpressionTrack,
+  type MccExpressionTrack,
+  type TrainingInstitutionType,
+} from "@plasius/training";
+
 export interface PackageDescriptor {
   readonly packageName: string;
   readonly featureFlagId: string;
@@ -204,6 +210,95 @@ export interface CreatePlayerSystemPointsStoreStateInput {
   readonly ppBalance?: number;
 }
 
+export type PlayerSystemTrainingRouteId =
+  | "field-practice"
+  | TrainingInstitutionType;
+
+export type PlayerSystemTrainingAuthorityId =
+  | "training"
+  | "commerce"
+  | "spellcraft"
+  | "item-crafting"
+  | "dungeon-crafting";
+
+export type PlayerSystemTrainingRoutingReason =
+  | "no-institution-ready"
+  | "focus-internalized"
+  | "focus-externalized"
+  | "focus-hybrid"
+  | "advanced-academy"
+  | "crafting-apprenticeship";
+
+export interface PlayerSystemTrainingInstitutionReadiness {
+  readonly institutionId: TrainingInstitutionType;
+  readonly ready: boolean;
+  readonly label: string;
+  readonly requirement: string;
+  readonly reason: string;
+  readonly supportedTracks: readonly MccExpressionTrack[];
+  readonly trustRequirement: string | null;
+  readonly missionRequirement: string | null;
+}
+
+export interface PlayerSystemTrainingInstitutionReadinessInput {
+  readonly institutionId: TrainingInstitutionType;
+  readonly ready: boolean;
+  readonly label: string;
+  readonly requirement: string;
+  readonly reason: string;
+  readonly supportedTracks?: readonly MccExpressionTrack[];
+  readonly trustRequirement?: string | null;
+  readonly missionRequirement?: string | null;
+}
+
+export interface PlayerSystemTrainingAuthorityHandoff {
+  readonly authorityId: PlayerSystemTrainingAuthorityId;
+  readonly eligible: boolean;
+  readonly label: string;
+  readonly handoffSurface: string;
+  readonly reason: string;
+  readonly requirement: string | null;
+}
+
+export interface PlayerSystemTrainingAuthorityHandoffInput {
+  readonly authorityId: PlayerSystemTrainingAuthorityId;
+  readonly eligible: boolean;
+  readonly label: string;
+  readonly handoffSurface: string;
+  readonly reason: string;
+  readonly requirement?: string | null;
+}
+
+export interface PlayerSystemTrainingRecommendation {
+  readonly routeId: PlayerSystemTrainingRouteId;
+  readonly focus: MccExpressionTrack;
+  readonly reason: PlayerSystemTrainingRoutingReason;
+}
+
+export interface PlayerSystemTrainingPrerequisiteExplanation {
+  readonly institutionId: TrainingInstitutionType;
+  readonly label: string;
+  readonly requirement: string;
+  readonly reason: string;
+  readonly trustRequirement: string | null;
+  readonly missionRequirement: string | null;
+}
+
+export interface PlayerSystemTrainingRoutingState {
+  readonly featureFlagId: string;
+  readonly recommendation: PlayerSystemTrainingRecommendation;
+  readonly readyInstitutions: readonly PlayerSystemTrainingInstitutionReadiness[];
+  readonly blockedPrerequisites: readonly PlayerSystemTrainingPrerequisiteExplanation[];
+  readonly trainingAuthority: PlayerSystemTrainingAuthorityHandoff | null;
+  readonly craftingAuthorities: readonly PlayerSystemTrainingAuthorityHandoff[];
+}
+
+export interface PlayerSystemTrainingRoutingInput {
+  readonly growthFocus: MccExpressionTrack;
+  readonly institutionReadiness: readonly PlayerSystemTrainingInstitutionReadiness[];
+  readonly authorityEligibility: readonly PlayerSystemTrainingAuthorityHandoff[];
+}
+
 export const PLAYER_SYSTEM_PACKAGE = "@plasius/player-system";
 export const PLAYER_SYSTEM_ENV_PREFIX = "PLAYER_SYSTEM";
 export const PLAYER_SYSTEM_PACKAGES_FEATURE_FLAG_ID =
@@ -213,6 +308,8 @@ export const PLAYER_SYSTEM_RUNTIME_NFR_FEATURE_FLAG_ID =
   "isekai.player-system.runtime-nfr.enabled";
 export const PLAYER_SYSTEM_RUNTIME_PORTABILITY_FEATURE_FLAG_ID =
   "isekai.player-system.runtime-portability.enabled";
+export const PLAYER_SYSTEM_TRAINING_ROUTING_FEATURE_FLAG_ID =
+  "isekai.player-system.training-routing.enabled";
 export const PLAYER_SYSTEM_POINTS_STORE_FEATURE_FLAG_ID =
   "isekai.player-system.points-store.enabled";
 
@@ -810,6 +907,286 @@ export function createPlayerSystemRuntimePortabilityContract(
             .forbiddenCouplings),
       ]),
     }),
+  });
+}
+
+const DEFAULT_TRACK_SUPPORT_BY_INSTITUTION: Record<
+  TrainingInstitutionType,
+  readonly MccExpressionTrack[]
+> = Object.freeze({
+  barracks: Object.freeze([
+    "internalized",
+    "hybrid",
+  ] satisfies MccExpressionTrack[]),
+  school: Object.freeze([
+    "externalized",
+    "hybrid",
+  ] satisfies MccExpressionTrack[]),
+  academy: Object.freeze([
+    "internalized",
+    "externalized",
+    "hybrid",
+  ] satisfies MccExpressionTrack[]),
+  apprenticeship: Object.freeze([
+    "externalized",
+    "hybrid",
+  ] satisfies MccExpressionTrack[]),
+});
+
+const ROUTE_PRIORITY_BY_FOCUS: Record<
+  MccExpressionTrack,
+  readonly TrainingInstitutionType[]
+> = Object.freeze({
+  internalized: Object.freeze(
+    ["academy", "barracks", "school", "apprenticeship"] satisfies
+      TrainingInstitutionType[]
+  ),
+  externalized: Object.freeze(
+    ["apprenticeship", "academy", "school", "barracks"] satisfies
+      TrainingInstitutionType[]
+  ),
+  hybrid: Object.freeze(
+    ["apprenticeship", "academy", "school", "barracks"] satisfies
+      TrainingInstitutionType[]
+  ),
+});
+
+const SUPPORTED_TRAINING_INSTITUTIONS = Object.freeze([
+  "school",
+  "barracks",
+  "academy",
+  "apprenticeship",
+] satisfies TrainingInstitutionType[]);
+
+const SUPPORTED_TRAINING_AUTHORITIES = Object.freeze([
+  "training",
+  "commerce",
+  "spellcraft",
+  "item-crafting",
+  "dungeon-crafting",
+] satisfies PlayerSystemTrainingAuthorityId[]);
+
+function freezeReadonlyArray<T>(items: readonly T[]): readonly T[] {
+  return Object.freeze([...items]);
+}
+
+function assertBoolean(value: unknown, label: string): asserts value is boolean {
+  if (typeof value !== "boolean") {
+    throw new Error(`${label} must be a boolean`);
+  }
+}
+
+function assertNonEmptyString(value: unknown, label: string): string {
+  if (typeof value !== "string") {
+    throw new Error(`${label} must be a non-empty string`);
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    throw new Error(`${label} must be a non-empty string`);
+  }
+
+  return trimmed;
+}
+
+function isTrainingInstitutionType(value: string): value is TrainingInstitutionType {
+  return SUPPORTED_TRAINING_INSTITUTIONS.includes(value as TrainingInstitutionType);
+}
+
+function assertTrainingInstitutionType(
+  value: unknown,
+  label: string
+): asserts value is TrainingInstitutionType {
+  if (typeof value !== "string" || !isTrainingInstitutionType(value)) {
+    throw new Error(`${label} must be a supported training institution`);
+  }
+}
+
+function isPlayerSystemTrainingAuthorityId(
+  value: string
+): value is PlayerSystemTrainingAuthorityId {
+  return SUPPORTED_TRAINING_AUTHORITIES.includes(
+    value as PlayerSystemTrainingAuthorityId
+  );
+}
+
+function assertPlayerSystemTrainingAuthorityId(
+  value: unknown,
+  label: string
+): asserts value is PlayerSystemTrainingAuthorityId {
+  if (typeof value !== "string" || !isPlayerSystemTrainingAuthorityId(value)) {
+    throw new Error(`${label} must be a supported training authority`);
+  }
+}
+
+function cloneSupportedTracks(
+  supportedTracks: readonly MccExpressionTrack[] | undefined,
+  institutionId: TrainingInstitutionType
+): readonly MccExpressionTrack[] {
+  const normalizedTracks = supportedTracks
+    ? [...supportedTracks]
+    : [...DEFAULT_TRACK_SUPPORT_BY_INSTITUTION[institutionId]];
+
+  if (normalizedTracks.length === 0) {
+    throw new Error(
+      "supportedTracks must contain at least one supported MCC expression track"
+    );
+  }
+
+  for (const track of normalizedTracks) {
+    if (!isMccExpressionTrack(track)) {
+      throw new Error(
+        "supportedTracks must contain only supported MCC expression tracks"
+      );
+    }
+  }
+
+  return freezeReadonlyArray(normalizedTracks);
+}
+
+function normalizeNullableString(value: string | null | undefined): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+export function createPlayerSystemTrainingInstitutionReadiness(
+  input: PlayerSystemTrainingInstitutionReadinessInput
+): PlayerSystemTrainingInstitutionReadiness {
+  assertTrainingInstitutionType(input.institutionId, "institutionId");
+  assertBoolean(input.ready, "ready");
+
+  return Object.freeze({
+    institutionId: input.institutionId,
+    ready: input.ready,
+    label: assertNonEmptyString(input.label, "label"),
+    requirement: assertNonEmptyString(input.requirement, "requirement"),
+    reason: assertNonEmptyString(input.reason, "reason"),
+    supportedTracks: cloneSupportedTracks(
+      input.supportedTracks,
+      input.institutionId
+    ),
+    trustRequirement: normalizeNullableString(input.trustRequirement),
+    missionRequirement: normalizeNullableString(input.missionRequirement),
+  });
+}
+
+export function createPlayerSystemTrainingAuthorityHandoff(
+  input: PlayerSystemTrainingAuthorityHandoffInput
+): PlayerSystemTrainingAuthorityHandoff {
+  assertPlayerSystemTrainingAuthorityId(input.authorityId, "authorityId");
+  assertBoolean(input.eligible, "eligible");
+
+  return Object.freeze({
+    authorityId: input.authorityId,
+    eligible: input.eligible,
+    label: assertNonEmptyString(input.label, "label"),
+    handoffSurface: assertNonEmptyString(input.handoffSurface, "handoffSurface"),
+    reason: assertNonEmptyString(input.reason, "reason"),
+    requirement: normalizeNullableString(input.requirement),
+  });
+}
+
+function resolveTrainingRecommendation(
+  focus: MccExpressionTrack,
+  institutions: readonly PlayerSystemTrainingInstitutionReadiness[]
+): PlayerSystemTrainingRecommendation {
+  const readyByInstitution = new Map(
+    institutions.map((entry) => [entry.institutionId, entry] as const)
+  );
+
+  for (const institutionId of ROUTE_PRIORITY_BY_FOCUS[focus]) {
+    const entry = readyByInstitution.get(institutionId);
+    if (!entry?.ready || !entry.supportedTracks.includes(focus)) {
+      continue;
+    }
+
+    let reason: PlayerSystemTrainingRoutingReason;
+    if (institutionId === "apprenticeship") {
+      reason = "crafting-apprenticeship";
+    } else if (institutionId === "academy") {
+      reason = "advanced-academy";
+    } else if (focus === "internalized") {
+      reason = "focus-internalized";
+    } else if (focus === "externalized") {
+      reason = "focus-externalized";
+    } else {
+      reason = "focus-hybrid";
+    }
+
+    return Object.freeze({
+      routeId: institutionId,
+      focus,
+      reason,
+    });
+  }
+
+  return Object.freeze({
+    routeId: "field-practice",
+    focus,
+    reason: "no-institution-ready",
+  });
+}
+
+export function createPlayerSystemTrainingRoutingState(
+  input: PlayerSystemTrainingRoutingInput
+): PlayerSystemTrainingRoutingState {
+  if (!isMccExpressionTrack(input.growthFocus)) {
+    throw new Error("growthFocus must be a supported MCC expression track");
+  }
+
+  if (!Array.isArray(input.institutionReadiness)) {
+    throw new Error("institutionReadiness must be an array");
+  }
+
+  if (!Array.isArray(input.authorityEligibility)) {
+    throw new Error("authorityEligibility must be an array");
+  }
+
+  const institutionReadiness = freezeReadonlyArray(
+    input.institutionReadiness.map((entry) =>
+      createPlayerSystemTrainingInstitutionReadiness(entry)
+    )
+  );
+  const authorityEligibility = freezeReadonlyArray(
+    input.authorityEligibility.map((entry) =>
+      createPlayerSystemTrainingAuthorityHandoff(entry)
+    )
+  );
+  const readyInstitutions = Object.freeze(
+    institutionReadiness.filter((entry) => entry.ready)
+  );
+  const blockedPrerequisites = Object.freeze(
+    institutionReadiness
+      .filter((entry) => !entry.ready)
+      .map((entry) =>
+        Object.freeze({
+          institutionId: entry.institutionId,
+          label: entry.label,
+          requirement: entry.requirement,
+          reason: entry.reason,
+          trustRequirement: entry.trustRequirement,
+          missionRequirement: entry.missionRequirement,
+        })
+      )
+  );
+  const trainingAuthority =
+    authorityEligibility.find((entry) => entry.authorityId === "training") ??
+    null;
+  const craftingAuthorities = Object.freeze(
+    authorityEligibility.filter((entry) => entry.authorityId !== "training")
+  );
+
+  return Object.freeze({
+    featureFlagId: PLAYER_SYSTEM_TRAINING_ROUTING_FEATURE_FLAG_ID,
+    recommendation: resolveTrainingRecommendation(input.growthFocus, institutionReadiness),
+    readyInstitutions,
+    blockedPrerequisites,
+    trainingAuthority,
+    craftingAuthorities,
   });
 }
 

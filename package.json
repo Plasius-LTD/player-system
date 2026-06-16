@@ -84,5 +84,8 @@
   },
   "engines": {
     "node": ">=24"
+  },
+  "dependencies": {
+    "@plasius/training": "^0.1.1"
   }
 }

@@ -19,6 +19,8 @@ All notable changes to this project will be documented in this file.
 - add explicit runtime timeout, cancellation, bounded-failure, and update-budget contracts under `isekai.player-system.runtime-nfr.enabled`
 - accept partial nested runtime-contract overrides from TypeScript consumers
 - add explicit session-data minimization, composition-scale, and portable seam contracts under `isekai.player-system.runtime-portability.enabled`
+- add focus-aware training-routing orchestration under `isekai.player-system.training-routing.enabled`, including blocked prerequisite explanations and authority-safe crafting handoff summaries
+- validate training-routing runtime payloads and return immutable routing snapshots for public package consumers
 - add points-store runtime orchestration under `isekai.player-system.points-store.enabled`, including PP/ESP/TIS/DIS ledger state, proto-social devolution eligibility, and civic/divine authority-boundary gating
 - harden public package verification so published entrypoints must be built and included in the package tarball
 - move npm publication to a protected-main-safe release-prep PR workflow with reconciled package, tag, and npm version state
