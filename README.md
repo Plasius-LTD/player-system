@@ -151,6 +151,7 @@ The inherited feature flag for this work is
 `createPlayerSystemTrainingRoutingState()` provide:
 
 - next-best route recommendations for field practice, barracks, school, academy, or apprenticeship
+- apprenticeship recommendations only activate when at least one eligible crafting authority handoff is available
 - explicit blocked prerequisite explanations, including trust and mission gates when provided by the caller
 - focus-aware routing that distinguishes internalized, externalized, and hybrid growth leanings
 - authority-safe handoff summaries for training plus spellcraft, item-crafting, dungeon-crafting, or interim commerce surfaces

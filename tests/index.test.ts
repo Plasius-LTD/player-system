@@ -574,6 +574,54 @@ describe("@plasius/player-system", () => {
     ).toEqual(["spellcraft", "item-crafting"]);
   });
 
+  it("falls back from apprenticeship when no eligible crafting handoff is available", () => {
+    const routingState = createPlayerSystemTrainingRoutingState({
+      growthFocus: "hybrid",
+      institutionReadiness: [
+        createPlayerSystemTrainingInstitutionReadiness({
+          institutionId: "academy",
+          ready: true,
+          label: "Academy readiness",
+          requirement: "Requires an academy-candidate stage.",
+          reason: "stage-unlocked",
+        }),
+        createPlayerSystemTrainingInstitutionReadiness({
+          institutionId: "apprenticeship",
+          ready: true,
+          label: "Apprenticeship readiness",
+          requirement: "Requires an apprenticeship-candidate stage.",
+          reason: "stage-unlocked",
+        }),
+      ],
+      authorityEligibility: [
+        createPlayerSystemTrainingAuthorityHandoff({
+          authorityId: "training",
+          eligible: true,
+          label: "Institution training handoff",
+          handoffSurface: "player-system:training",
+          reason: "institution-ready",
+        }),
+        createPlayerSystemTrainingAuthorityHandoff({
+          authorityId: "spellcraft",
+          eligible: false,
+          label: "Spellcraft handoff",
+          handoffSurface: "player-system:spellcraft",
+          reason: "requires-apprenticeship-stage",
+          requirement: "Unlock an apprenticeship-candidate stage first.",
+        }),
+      ],
+    });
+
+    expect(routingState.recommendation).toEqual({
+      routeId: "academy",
+      focus: "hybrid",
+      reason: "advanced-academy",
+    });
+    expect(
+      routingState.craftingAuthorities.map((authority) => authority.authorityId)
+    ).toEqual(["spellcraft"]);
+  });
+
   it("fails closed for invalid JavaScript-style training-routing inputs", () => {
     expect(() =>
       createPlayerSystemTrainingInstitutionReadiness({

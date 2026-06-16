@@ -1092,8 +1092,12 @@ export function createPlayerSystemTrainingAuthorityHandoff(
 
 function resolveTrainingRecommendation(
   focus: MccExpressionTrack,
-  institutions: readonly PlayerSystemTrainingInstitutionReadiness[]
+  institutions: readonly PlayerSystemTrainingInstitutionReadiness[],
+  craftingAuthorities: readonly PlayerSystemTrainingAuthorityHandoff[]
 ): PlayerSystemTrainingRecommendation {
+  const hasEligibleCraftingAuthority = craftingAuthorities.some(
+    (entry) => entry.eligible
+  );
   const readyByInstitution = new Map(
     institutions.map((entry) => [entry.institutionId, entry] as const)
   );
@@ -1101,6 +1105,9 @@ function resolveTrainingRecommendation(
   for (const institutionId of ROUTE_PRIORITY_BY_FOCUS[focus]) {
     const entry = readyByInstitution.get(institutionId);
     if (!entry?.ready || !entry.supportedTracks.includes(focus)) {
+      continue;
+    }
+    if (institutionId === "apprenticeship" && !hasEligibleCraftingAuthority) {
       continue;
     }
 
@@ -1182,7 +1189,11 @@ export function createPlayerSystemTrainingRoutingState(
 
   return Object.freeze({
     featureFlagId: PLAYER_SYSTEM_TRAINING_ROUTING_FEATURE_FLAG_ID,
-    recommendation: resolveTrainingRecommendation(input.growthFocus, institutionReadiness),
+    recommendation: resolveTrainingRecommendation(
+      input.growthFocus,
+      institutionReadiness,
+      craftingAuthorities
+    ),
     readyInstitutions,
     blockedPrerequisites,
     trainingAuthority,
