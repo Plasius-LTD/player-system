@@ -368,6 +368,8 @@ describe("@plasius/player-system", () => {
       label: "Barracks readiness",
       requirement: "Requires a guild-cleared stage.",
       reason: "stage-unlocked",
+      trustRequirement: "   ",
+      missionRequirement: "\n",
     });
 
     expect(institution.supportedTracks).toEqual(["internalized", "hybrid"]);
