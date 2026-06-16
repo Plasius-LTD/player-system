@@ -13,6 +13,16 @@ All notable changes to this project will be documented in this file.
 
 - **Security**
   - (placeholder)
+## [0.1.6] - 2026-06-16
+- **Added**
+  - add focus-aware training-routing orchestration under `isekai.player-system.training-routing.enabled`, including blocked prerequisite explanations and authority-safe crafting handoff summaries
+
+- **Changed**
+  - gate apprenticeship recommendations on at least one eligible non-training crafting handoff before recommending specialization routes
+
+- **Fixed**
+  - validate training-routing runtime payloads and return immutable routing snapshots for public package consumers
+
 ## [0.1.5] - 2026-06-13
 - bootstrap `@plasius/player-system` from the schema package baseline with package governance, docs, tests, and demo scaffolding
 - document the Event Log and Achievement runtime boundary for curated blob-backed read models, including matching design, ADR, and TDR records
