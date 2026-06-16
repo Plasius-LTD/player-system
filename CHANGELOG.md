@@ -13,6 +13,9 @@ All notable changes to this project will be documented in this file.
 
 - **Security**
   - (placeholder)
+## [0.1.6] - 2026-06-16
+- gate apprenticeship recommendations on eligible crafting-authority handoffs so hybrid training routing does not surface dead-end crafting paths
+
 ## [0.1.5] - 2026-06-13
 - bootstrap `@plasius/player-system` from the schema package baseline with package governance, docs, tests, and demo scaffolding
 - document the Event Log and Achievement runtime boundary for curated blob-backed read models, including matching design, ADR, and TDR records
