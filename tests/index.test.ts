@@ -496,6 +496,28 @@ describe("@plasius/player-system", () => {
     });
   });
 
+  it("uses the hybrid-routing reason when a non-specialized unlocked route wins", () => {
+    const routingState = createPlayerSystemTrainingRoutingState({
+      growthFocus: "hybrid",
+      institutionReadiness: [
+        createPlayerSystemTrainingInstitutionReadiness({
+          institutionId: "barracks",
+          ready: true,
+          label: "Barracks readiness",
+          requirement: "Requires a guild-cleared stage.",
+          reason: "stage-unlocked",
+        }),
+      ],
+      authorityEligibility: [],
+    });
+
+    expect(routingState.recommendation).toEqual({
+      routeId: "barracks",
+      focus: "hybrid",
+      reason: "focus-hybrid",
+    });
+  });
+
   it("prefers apprenticeship once crafting-specialization handoffs are live", () => {
     const routingState = createPlayerSystemTrainingRoutingState({
       growthFocus: "hybrid",
@@ -575,6 +597,29 @@ describe("@plasius/player-system", () => {
       createPlayerSystemTrainingInstitutionReadiness({
         institutionId: "academy",
         ready: true,
+        label: 42 as never,
+        requirement: "Requires an academy-candidate stage.",
+        reason: "stage-unlocked",
+      })
+    ).toThrow("label must be a non-empty string");
+
+    expect(() =>
+      createPlayerSystemTrainingInstitutionReadiness({
+        institutionId: "academy",
+        ready: true,
+        label: "Academy readiness",
+        requirement: "Requires an academy-candidate stage.",
+        reason: "stage-unlocked",
+        supportedTracks: [],
+      })
+    ).toThrow(
+      "supportedTracks must contain at least one supported MCC expression track"
+    );
+
+    expect(() =>
+      createPlayerSystemTrainingInstitutionReadiness({
+        institutionId: "academy",
+        ready: true,
         label: "Academy readiness",
         requirement: "Requires an academy-candidate stage.",
         reason: "stage-unlocked",
@@ -599,6 +644,22 @@ describe("@plasius/player-system", () => {
         authorityEligibility: [],
       })
     ).toThrow("growthFocus must be a supported MCC expression track");
+
+    expect(() =>
+      createPlayerSystemTrainingRoutingState({
+        growthFocus: "hybrid",
+        institutionReadiness: {} as never,
+        authorityEligibility: [],
+      })
+    ).toThrow("institutionReadiness must be an array");
+
+    expect(() =>
+      createPlayerSystemTrainingRoutingState({
+        growthFocus: "hybrid",
+        institutionReadiness: [],
+        authorityEligibility: {} as never,
+      })
+    ).toThrow("authorityEligibility must be an array");
   });
 
   it("returns immutable routing snapshots instead of caller-owned nested objects", () => {
