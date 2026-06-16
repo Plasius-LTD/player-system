@@ -586,6 +586,16 @@ describe("@plasius/player-system", () => {
     expect(() =>
       createPlayerSystemTrainingInstitutionReadiness({
         institutionId: "academy",
+        ready: "yes" as never,
+        label: "Academy readiness",
+        requirement: "Requires an academy-candidate stage.",
+        reason: "stage-unlocked",
+      })
+    ).toThrow("ready must be a boolean");
+
+    expect(() =>
+      createPlayerSystemTrainingInstitutionReadiness({
+        institutionId: "academy",
         ready: true,
         label: "  ",
         requirement: "Requires an academy-candidate stage.",
