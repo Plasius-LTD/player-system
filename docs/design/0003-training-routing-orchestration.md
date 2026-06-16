@@ -22,7 +22,9 @@ The package now exports:
 - semantic readiness and handoff shapes instead of UI translation keys
 - helpers to create frozen institution-readiness and authority-handoff records
 - a routing resolver that distinguishes internalized, externalized, and hybrid
-  growth focus when multiple institution routes are available
+  growth focus when multiple institution routes are available, while only
+  selecting apprenticeship when at least one downstream crafting authority
+  handoff is actually eligible
 - explicit blocked prerequisite summaries that preserve trust and mission
   requirements supplied by the caller
 
