@@ -2,10 +2,17 @@ import {
   PLAYER_SYSTEM_POINTS_STORE_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_PACKAGES_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_FEATURE_FLAG_ID,
+  PLAYER_SYSTEM_GOVERNANCE_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_RUNTIME_NFR_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_RUNTIME_PORTABILITY_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_TRAINING_ROUTING_FEATURE_FLAG_ID,
   assessPlayerSystemRuntimePortability,
+  createPlayerSystemGovernanceContract,
+  createPlayerSystemGovernanceRuntimeState,
+  createPlayerSystemOverdriveState,
+  createPlayerSystemRepairTaxAssessment,
+  evaluatePlayerSystemGovernanceSignals,
+  evaluatePlayerSystemRewardPreflight,
   createPlayerSystemTrainingAuthorityHandoff,
   createPlayerSystemTrainingInstitutionReadiness,
   createPlayerSystemTrainingRoutingState,
@@ -213,6 +220,225 @@ describe("@plasius/player-system", () => {
         state: "available",
       },
     });
+  });
+
+  it("exports the governance contract with bounded scorecards and rollout flag", () => {
+    const contract = createPlayerSystemGovernanceContract();
+
+    expect(contract.featureFlagId).toBe(PLAYER_SYSTEM_GOVERNANCE_FEATURE_FLAG_ID);
+    expect(contract.rewards.boundedRewardKinds).toEqual([
+      "guidance-credit",
+      "trust-surplus",
+      "route-annotation",
+      "readiness-preview",
+    ]);
+    expect(contract.scorecards.map((scorecard) => scorecard.id)).toEqual([
+      "tutorial-usefulness",
+      "mission-fit",
+      "preference-learning",
+      "voice-intent",
+      "reward-boundedness",
+    ]);
+    expect(Object.isFrozen(contract.scorecards)).toBe(true);
+  });
+
+  it("models overdrive consent, active duration, and expiry/auto-disengage states", () => {
+    const awaitingConsent = createPlayerSystemOverdriveState({
+      requested: true,
+      ready: false,
+      consent: "required",
+      feedback: "Awaiting player confirmation.",
+      requestedAt: "2026-06-19T09:00:00.000Z",
+    });
+    const active = createPlayerSystemOverdriveState({
+      requested: true,
+      ready: true,
+      consent: "granted",
+      feedback: "Overdrive engaged.",
+      requestedAt: "2026-06-19T09:00:00.000Z",
+      activatedAt: "2026-06-19T09:01:00.000Z",
+      now: "2026-06-19T09:02:00.000Z",
+      durationMs: 180000,
+    });
+    const expired = createPlayerSystemOverdriveState({
+      requested: true,
+      ready: true,
+      consent: "granted",
+      feedback: "Overdrive expired.",
+      requestedAt: "2026-06-19T09:00:00.000Z",
+      activatedAt: "2026-06-19T09:01:00.000Z",
+      now: "2026-06-19T09:05:00.000Z",
+      durationMs: 180000,
+    });
+    const autoDisengaged = createPlayerSystemOverdriveState({
+      requested: true,
+      ready: true,
+      consent: "granted",
+      feedback: "Overdrive disengaged for safety.",
+      requestedAt: "2026-06-19T09:00:00.000Z",
+      activatedAt: "2026-06-19T09:01:00.000Z",
+      now: "2026-06-19T09:02:00.000Z",
+      durationMs: 180000,
+      autoDisengageTrigger: "fatigue-threshold-breached",
+    });
+
+    expect(awaitingConsent.status).toBe("consent-required");
+    expect(active.status).toBe("active");
+    expect(active.remainingMs).toBe(120000);
+    expect(expired.status).toBe("expired");
+    expect(expired.remainingMs).toBe(0);
+    expect(autoDisengaged.status).toBe("auto-disengaged");
+    expect(autoDisengaged.autoDisengageTrigger).toBe(
+      "fatigue-threshold-breached"
+    );
+  });
+
+  it("surfaces governance denial and escalation states", () => {
+    const denied = createPlayerSystemOverdriveState({
+      requested: true,
+      ready: false,
+      consent: "denied",
+      feedback: "Overdrive denied by safety governance.",
+      denialReason: "fatigue ceiling exceeded",
+    });
+    const escalated = createPlayerSystemOverdriveState({
+      requested: true,
+      ready: false,
+      consent: "denied",
+      feedback: "Overdrive escalated for guardian review.",
+      denialReason: "child-safe guardrail exceeded",
+      escalationReason: "guardian-review-required",
+    });
+
+    expect(denied.status).toBe("denied");
+    expect(denied.denialReason).toBe("fatigue ceiling exceeded");
+    expect(escalated.status).toBe("escalated");
+    expect(escalated.escalationReason).toBe("guardian-review-required");
+  });
+
+  it("evaluates bounded reward preflight against caps, readiness, and policy outcomes", () => {
+    const allowed = evaluatePlayerSystemRewardPreflight({
+      rewardSource: "mission",
+      rewardType: "guidance-credit",
+      globalCap: 10,
+      sessionCap: 4,
+      grantedGlobal: 4,
+      grantedSession: 1,
+      readiness: "ready",
+      policyAllowed: true,
+    });
+    const blocked = evaluatePlayerSystemRewardPreflight({
+      rewardSource: "voice-intent",
+      rewardType: "readiness-preview",
+      globalCap: 2,
+      sessionCap: 1,
+      grantedGlobal: 2,
+      grantedSession: 1,
+      readiness: "blocked",
+      policyAllowed: false,
+      policyReason: "Voice intent was not confidently resolved.",
+    });
+
+    expect(allowed.allowed).toBe(true);
+    expect(allowed.status).toBe("allowed");
+    expect(blocked.allowed).toBe(false);
+    expect(blocked.status).toBe("blocked");
+    expect(blocked.warnings).toContain("Global reward cap has already been reached.");
+    expect(blocked.warnings).toContain(
+      "Voice intent was not confidently resolved."
+    );
+  });
+
+  it("assesses repair-tax consequences for child-safe and harder-mode flows", () => {
+    const childSafe = createPlayerSystemRepairTaxAssessment({
+      mode: "child-safe",
+      repairRequired: true,
+      ppBalance: 2,
+    });
+    const harderMode = createPlayerSystemRepairTaxAssessment({
+      mode: "harder-mode",
+      repairRequired: true,
+      ppBalance: 9,
+      repairCost: 5,
+    });
+
+    expect(childSafe.policy.spellImpairment).toBe("none");
+    expect(childSafe.canAffordRepair).toBe(true);
+    expect(harderMode.policy.spellImpairment).toBe("high-complexity-suppressed");
+    expect(harderMode.canAffordRepair).toBe(true);
+    expect(harderMode.repairCost).toBe(5);
+  });
+
+  it("invokes governance evaluation adapters for tutorial, mission-fit, and voice-intent signals", async () => {
+    const calls: string[] = [];
+    const summary = await evaluatePlayerSystemGovernanceSignals({
+      adapter: {
+        adapterId: "player-system-governance-evals",
+        async observeSignal(signal) {
+          calls.push(signal.signalId);
+          return {
+            signalId: signal.signalId,
+            accepted: signal.signalId !== "voice-intent",
+            score: signal.signalId === "voice-intent" ? 0.58 : 0.92,
+            summary: `Observed ${signal.signalId}`,
+          };
+        },
+      },
+      signals: [
+        { signalId: "tutorial-usefulness", summary: "Tutorial branch outcome" },
+        { signalId: "mission-fit", summary: "Mission recommendation outcome" },
+        { signalId: "voice-intent", summary: "Voice command interpretation" },
+      ],
+    });
+
+    expect(calls).toEqual([
+      "tutorial-usefulness",
+      "mission-fit",
+      "voice-intent",
+    ]);
+    expect(summary.status).toBe("failed");
+    expect(summary.acceptedSignals).toBe(2);
+    expect(summary.results).toHaveLength(3);
+  });
+
+  it("combines static governance policy with runtime outcomes", () => {
+    const runtime = createPlayerSystemGovernanceRuntimeState({
+      enabled: true,
+      source: "feature-flag",
+      activeMode: "harder-mode",
+      overdrive: {
+        requested: true,
+        ready: true,
+        consent: "granted",
+        feedback: "Overdrive is active.",
+        requestedAt: "2026-06-19T09:00:00.000Z",
+        activatedAt: "2026-06-19T09:01:00.000Z",
+        now: "2026-06-19T09:02:00.000Z",
+        durationMs: 180000,
+      },
+      repairTax: {
+        mode: "harder-mode",
+        repairRequired: true,
+        ppBalance: 7,
+      },
+      rewardPreflight: {
+        rewardSource: "mission",
+        rewardType: "guidance-credit",
+        globalCap: 8,
+        sessionCap: 3,
+        grantedGlobal: 3,
+        grantedSession: 1,
+        readiness: "ready",
+        policyAllowed: true,
+      },
+    });
+
+    expect(runtime.enabled).toBe(true);
+    expect(runtime.source).toBe("feature-flag");
+    expect(runtime.activeMode).toBe("harder-mode");
+    expect(runtime.overdriveState.status).toBe("active");
+    expect(runtime.repairTaxAssessment.policy.mode).toBe("harder-mode");
+    expect(runtime.rewardPreflight.allowed).toBe(true);
   });
 
   it("exports runtime NFR defaults behind the inherited feature flag", () => {

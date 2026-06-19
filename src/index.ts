@@ -299,6 +299,265 @@ export interface PlayerSystemTrainingRoutingInput {
   readonly authorityEligibility: readonly PlayerSystemTrainingAuthorityHandoff[];
 }
 
+export type PlayerSystemGovernanceMode = "child-safe" | "harder-mode";
+
+export type PlayerSystemGovernanceRuntimeSource =
+  | "env"
+  | "feature-flag"
+  | "default-disabled";
+
+export type PlayerSystemGovernanceOverdriveEligibilityCheck =
+  | "explicit-player-urgency"
+  | "fatigue-below-emergency-threshold"
+  | "normal-casting-blocked"
+  | "chaos-pressure-below-lockout";
+
+export type PlayerSystemGovernanceOverdriveAutoDisengageTrigger =
+  | "fatigue-threshold-breached"
+  | "safe-mana-restored"
+  | "player-cancelled";
+
+export type PlayerSystemGovernanceRewardEvaluationCheck =
+  | "progression-fit"
+  | "institution-gate-respected"
+  | "no-direct-power-skip"
+  | "duplicate-ledger-blocked"
+  | "external-authority-preserved";
+
+export type PlayerSystemGovernanceRewardKind =
+  | "guidance-credit"
+  | "trust-surplus"
+  | "route-annotation"
+  | "readiness-preview";
+
+export type PlayerSystemGovernanceScorecardId =
+  | "tutorial-usefulness"
+  | "mission-fit"
+  | "preference-learning"
+  | "voice-intent"
+  | "reward-boundedness";
+
+export type PlayerSystemGovernanceScorecardCadence =
+  | "daily"
+  | "weekly"
+  | "per-release";
+
+export type PlayerSystemGovernanceMetricId =
+  | "completion-rate"
+  | "combat-replay-rate"
+  | "unlock-lag"
+  | "acceptance-rate"
+  | "abandonment-rate"
+  | "reward-regret-rate"
+  | "retention-lift"
+  | "branch-coherence"
+  | "preference-drift"
+  | "intent-success-rate"
+  | "clarification-rate"
+  | "manual-fallback-rate"
+  | "cap-breach-rate"
+  | "safety-override-rate"
+  | "preview-to-grant-ratio";
+
+export interface PlayerSystemGovernanceOverdrivePolicy {
+  readonly commandSurface: "mcc-status-panel";
+  readonly eligibilityChecks:
+    readonly PlayerSystemGovernanceOverdriveEligibilityCheck[];
+  readonly autoDisengageTriggers:
+    readonly PlayerSystemGovernanceOverdriveAutoDisengageTrigger[];
+  readonly auditEvent: "player-system.overdrive.requested";
+}
+
+export interface PlayerSystemGovernanceRepairTaxModePolicy {
+  readonly mode: PlayerSystemGovernanceMode;
+  readonly deathOutcome: "pp-only-recovery" | "mcc-repair-damage";
+  readonly spellImpairment: "none" | "high-complexity-suppressed";
+  readonly repairCurrency: "none" | "pp";
+  readonly auditEvent:
+    | "player-system.repair-tax.child-safe-reviewed"
+    | "player-system.repair-tax.applied";
+}
+
+export interface PlayerSystemGovernanceRewardPolicy {
+  readonly authorityOwner: "player-system-missions";
+  readonly evaluationChecks:
+    readonly PlayerSystemGovernanceRewardEvaluationCheck[];
+  readonly boundedRewardKinds: readonly PlayerSystemGovernanceRewardKind[];
+  readonly auditEvent: "player-system.reward-evaluated";
+}
+
+export interface PlayerSystemGovernanceScorecard {
+  readonly id: PlayerSystemGovernanceScorecardId;
+  readonly window: "24h" | "7d" | "14d";
+  readonly reviewCadence: PlayerSystemGovernanceScorecardCadence;
+  readonly metrics: readonly PlayerSystemGovernanceMetricId[];
+}
+
+export interface PlayerSystemGovernanceEvaluationSignalInput {
+  readonly signalId: PlayerSystemGovernanceScorecardId;
+  readonly summary: string;
+  readonly metadata?: Readonly<Record<string, unknown>>;
+}
+
+export interface PlayerSystemGovernanceEvaluationSignalResult {
+  readonly signalId: PlayerSystemGovernanceScorecardId;
+  readonly accepted: boolean;
+  readonly score: number;
+  readonly summary: string;
+  readonly metadata?: Readonly<Record<string, unknown>>;
+  readonly error?: string;
+}
+
+export interface PlayerSystemGovernanceEvaluationAdapter {
+  readonly adapterId: string;
+  observeSignal(
+    signal: PlayerSystemGovernanceEvaluationSignalInput
+  ): Promise<PlayerSystemGovernanceEvaluationSignalResult>;
+}
+
+export interface PlayerSystemGovernanceEvaluationSummary {
+  readonly adapterId: string;
+  readonly status: "passed" | "failed" | "degraded";
+  readonly totalSignals: number;
+  readonly acceptedSignals: number;
+  readonly averageScore: number | null;
+  readonly results: readonly PlayerSystemGovernanceEvaluationSignalResult[];
+}
+
+export type PlayerSystemGovernanceOverdriveStatus =
+  | "idle"
+  | "consent-required"
+  | "ready"
+  | "denied"
+  | "escalated"
+  | "active"
+  | "expired"
+  | "auto-disengaged";
+
+export interface PlayerSystemGovernanceOverdriveStateInput {
+  readonly requested: boolean;
+  readonly ready: boolean;
+  readonly consent: "required" | "granted" | "denied";
+  readonly feedback: string;
+  readonly requestedAt?: string;
+  readonly activatedAt?: string;
+  readonly now?: string;
+  readonly durationMs?: number;
+  readonly denialReason?: string;
+  readonly escalationReason?: string;
+  readonly autoDisengageTrigger?:
+    | PlayerSystemGovernanceOverdriveAutoDisengageTrigger
+    | null;
+}
+
+export interface PlayerSystemGovernanceOverdriveState {
+  readonly status: PlayerSystemGovernanceOverdriveStatus;
+  readonly requested: boolean;
+  readonly ready: boolean;
+  readonly consent: "required" | "granted" | "denied";
+  readonly feedback: string;
+  readonly requestedAt: string | null;
+  readonly activatedAt: string | null;
+  readonly expiresAt: string | null;
+  readonly durationMs: number | null;
+  readonly remainingMs: number | null;
+  readonly denialReason: string | null;
+  readonly escalationReason: string | null;
+  readonly autoDisengageTrigger:
+    | PlayerSystemGovernanceOverdriveAutoDisengageTrigger
+    | null;
+}
+
+export interface PlayerSystemGovernanceRepairTaxAssessmentInput {
+  readonly mode: PlayerSystemGovernanceMode;
+  readonly repairRequired: boolean;
+  readonly ppBalance: number;
+  readonly repairCost?: number;
+}
+
+export interface PlayerSystemGovernanceRepairTaxAssessment {
+  readonly mode: PlayerSystemGovernanceMode;
+  readonly repairRequired: boolean;
+  readonly repairCost: number;
+  readonly canAffordRepair: boolean;
+  readonly feedback: string;
+  readonly policy: PlayerSystemGovernanceRepairTaxModePolicy;
+}
+
+export type PlayerSystemGovernanceRewardSource =
+  | "tutorial"
+  | "mission"
+  | "guild-quest"
+  | "training-routing"
+  | "voice-intent";
+
+export type PlayerSystemGovernanceReadinessState =
+  | "ready"
+  | "needs-gate"
+  | "blocked";
+
+export interface PlayerSystemGovernanceRewardPreflightInput {
+  readonly rewardSource: PlayerSystemGovernanceRewardSource;
+  readonly rewardType: PlayerSystemGovernanceRewardKind;
+  readonly globalCap: number;
+  readonly sessionCap: number;
+  readonly grantedGlobal: number;
+  readonly grantedSession: number;
+  readonly readiness: PlayerSystemGovernanceReadinessState;
+  readonly policyAllowed?: boolean;
+  readonly policyReason?: string;
+}
+
+export interface PlayerSystemGovernanceRewardPreflightResult {
+  readonly status: "allowed" | "warning" | "blocked";
+  readonly allowed: boolean;
+  readonly rewardSource: PlayerSystemGovernanceRewardSource;
+  readonly rewardType: PlayerSystemGovernanceRewardKind;
+  readonly remainingGlobal: number;
+  readonly remainingSession: number;
+  readonly warnings: readonly string[];
+  readonly feedback: string;
+}
+
+export interface PlayerSystemGovernanceContract {
+  readonly featureFlagId: string;
+  readonly contractVersion: string;
+  readonly policyOwner: "player-system-governance";
+  readonly overdrive: PlayerSystemGovernanceOverdrivePolicy;
+  readonly repairTax: {
+    readonly childSafe: PlayerSystemGovernanceRepairTaxModePolicy;
+    readonly harderMode: PlayerSystemGovernanceRepairTaxModePolicy;
+  };
+  readonly rewards: PlayerSystemGovernanceRewardPolicy;
+  readonly scorecards: readonly PlayerSystemGovernanceScorecard[];
+}
+
+export interface PlayerSystemGovernanceContractInput {
+  readonly scorecards?: readonly PlayerSystemGovernanceScorecard[];
+}
+
+export interface PlayerSystemGovernanceRuntimeState
+  extends PlayerSystemGovernanceContract {
+  readonly enabled: boolean;
+  readonly source: PlayerSystemGovernanceRuntimeSource;
+  readonly activeMode: PlayerSystemGovernanceMode;
+  readonly overdriveState: PlayerSystemGovernanceOverdriveState;
+  readonly repairTaxAssessment: PlayerSystemGovernanceRepairTaxAssessment;
+  readonly rewardPreflight: PlayerSystemGovernanceRewardPreflightResult;
+  readonly evaluationSummary?: PlayerSystemGovernanceEvaluationSummary;
+}
+
+export interface PlayerSystemGovernanceRuntimeStateInput {
+  readonly enabled: boolean;
+  readonly source?: PlayerSystemGovernanceRuntimeSource;
+  readonly activeMode?: PlayerSystemGovernanceMode;
+  readonly contract?: PlayerSystemGovernanceContractInput;
+  readonly overdrive: PlayerSystemGovernanceOverdriveStateInput;
+  readonly repairTax: PlayerSystemGovernanceRepairTaxAssessmentInput;
+  readonly rewardPreflight: PlayerSystemGovernanceRewardPreflightInput;
+  readonly evaluationSummary?: PlayerSystemGovernanceEvaluationSummary;
+}
+
 export const PLAYER_SYSTEM_PACKAGE = "@plasius/player-system";
 export const PLAYER_SYSTEM_ENV_PREFIX = "PLAYER_SYSTEM";
 export const PLAYER_SYSTEM_PACKAGES_FEATURE_FLAG_ID =
@@ -312,6 +571,92 @@ export const PLAYER_SYSTEM_TRAINING_ROUTING_FEATURE_FLAG_ID =
   "isekai.player-system.training-routing.enabled";
 export const PLAYER_SYSTEM_POINTS_STORE_FEATURE_FLAG_ID =
   "isekai.player-system.points-store.enabled";
+export const PLAYER_SYSTEM_GOVERNANCE_FEATURE_FLAG_ID =
+  "isekai.player-system.governance.enabled";
+export const PLAYER_SYSTEM_GOVERNANCE_CONTRACT_VERSION = "2026-06-19.v1";
+
+export const PLAYER_SYSTEM_GOVERNANCE_OVERDRIVE_ELIGIBILITY_CHECKS =
+  Object.freeze([
+    "explicit-player-urgency",
+    "fatigue-below-emergency-threshold",
+    "normal-casting-blocked",
+    "chaos-pressure-below-lockout",
+  ] satisfies PlayerSystemGovernanceOverdriveEligibilityCheck[]);
+
+export const PLAYER_SYSTEM_GOVERNANCE_AUTO_DISENGAGE_TRIGGERS = Object.freeze([
+  "fatigue-threshold-breached",
+  "safe-mana-restored",
+  "player-cancelled",
+] satisfies PlayerSystemGovernanceOverdriveAutoDisengageTrigger[]);
+
+export const PLAYER_SYSTEM_GOVERNANCE_REWARD_EVALUATION_CHECKS =
+  Object.freeze([
+    "progression-fit",
+    "institution-gate-respected",
+    "no-direct-power-skip",
+    "duplicate-ledger-blocked",
+    "external-authority-preserved",
+  ] satisfies PlayerSystemGovernanceRewardEvaluationCheck[]);
+
+export const PLAYER_SYSTEM_GOVERNANCE_REWARD_KINDS = Object.freeze([
+  "guidance-credit",
+  "trust-surplus",
+  "route-annotation",
+  "readiness-preview",
+] satisfies PlayerSystemGovernanceRewardKind[]);
+
+export const defaultPlayerSystemGovernanceScorecards = Object.freeze([
+  Object.freeze({
+    id: "tutorial-usefulness",
+    window: "7d",
+    reviewCadence: "weekly",
+    metrics: Object.freeze([
+      "completion-rate",
+      "combat-replay-rate",
+      "unlock-lag",
+    ] satisfies PlayerSystemGovernanceMetricId[]),
+  }),
+  Object.freeze({
+    id: "mission-fit",
+    window: "14d",
+    reviewCadence: "per-release",
+    metrics: Object.freeze([
+      "acceptance-rate",
+      "abandonment-rate",
+      "reward-regret-rate",
+    ] satisfies PlayerSystemGovernanceMetricId[]),
+  }),
+  Object.freeze({
+    id: "preference-learning",
+    window: "14d",
+    reviewCadence: "weekly",
+    metrics: Object.freeze([
+      "retention-lift",
+      "branch-coherence",
+      "preference-drift",
+    ] satisfies PlayerSystemGovernanceMetricId[]),
+  }),
+  Object.freeze({
+    id: "voice-intent",
+    window: "24h",
+    reviewCadence: "daily",
+    metrics: Object.freeze([
+      "intent-success-rate",
+      "clarification-rate",
+      "manual-fallback-rate",
+    ] satisfies PlayerSystemGovernanceMetricId[]),
+  }),
+  Object.freeze({
+    id: "reward-boundedness",
+    window: "7d",
+    reviewCadence: "weekly",
+    metrics: Object.freeze([
+      "cap-breach-rate",
+      "safety-override-rate",
+      "preview-to-grant-ratio",
+    ] satisfies PlayerSystemGovernanceMetricId[]),
+  }),
+] satisfies readonly PlayerSystemGovernanceScorecard[]);
 
 export const packageDescriptor: PackageDescriptor = Object.freeze({
   packageName: PLAYER_SYSTEM_PACKAGE,
@@ -970,10 +1315,28 @@ function freezeReadonlyArray<T>(items: readonly T[]): readonly T[] {
   return Object.freeze([...items]);
 }
 
+function freezeReadonlyRecord(
+  value?: Readonly<Record<string, unknown>>
+): Readonly<Record<string, unknown>> | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  return Object.freeze({ ...value });
+}
+
 function assertBoolean(value: unknown, label: string): asserts value is boolean {
   if (typeof value !== "boolean") {
     throw new Error(`${label} must be a boolean`);
   }
+}
+
+function assertFiniteNumber(value: unknown, label: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`${label} must be a finite number`);
+  }
+
+  return value;
 }
 
 function assertNonEmptyString(value: unknown, label: string): string {
@@ -1051,6 +1414,334 @@ function normalizeNullableString(value: string | null | undefined): string | nul
 
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeTimestamp(value: string | undefined, label: string): string | null {
+  if (value === undefined) {
+    return null;
+  }
+
+  const normalized = assertNonEmptyString(value, label);
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.valueOf())) {
+    throw new Error(`${label} must be a valid ISO timestamp`);
+  }
+
+  return parsed.toISOString();
+}
+
+function selectRepairPolicy(
+  mode: PlayerSystemGovernanceMode,
+  contract: PlayerSystemGovernanceContract
+): PlayerSystemGovernanceRepairTaxModePolicy {
+  return mode === "harder-mode"
+    ? contract.repairTax.harderMode
+    : contract.repairTax.childSafe;
+}
+
+export function createPlayerSystemGovernanceContract(
+  input: PlayerSystemGovernanceContractInput = {}
+): PlayerSystemGovernanceContract {
+  const scorecards = freezeReadonlyArray(
+    (input.scorecards ?? defaultPlayerSystemGovernanceScorecards).map((scorecard) =>
+      Object.freeze({
+        id: scorecard.id,
+        window: scorecard.window,
+        reviewCadence: scorecard.reviewCadence,
+        metrics: freezeReadonlyArray(scorecard.metrics),
+      })
+    )
+  );
+
+  return Object.freeze({
+    featureFlagId: PLAYER_SYSTEM_GOVERNANCE_FEATURE_FLAG_ID,
+    contractVersion: PLAYER_SYSTEM_GOVERNANCE_CONTRACT_VERSION,
+    policyOwner: "player-system-governance",
+    overdrive: Object.freeze({
+      commandSurface: "mcc-status-panel",
+      eligibilityChecks: PLAYER_SYSTEM_GOVERNANCE_OVERDRIVE_ELIGIBILITY_CHECKS,
+      autoDisengageTriggers: PLAYER_SYSTEM_GOVERNANCE_AUTO_DISENGAGE_TRIGGERS,
+      auditEvent: "player-system.overdrive.requested",
+    }),
+    repairTax: Object.freeze({
+      childSafe: Object.freeze({
+        mode: "child-safe",
+        deathOutcome: "pp-only-recovery",
+        spellImpairment: "none",
+        repairCurrency: "none",
+        auditEvent: "player-system.repair-tax.child-safe-reviewed",
+      }),
+      harderMode: Object.freeze({
+        mode: "harder-mode",
+        deathOutcome: "mcc-repair-damage",
+        spellImpairment: "high-complexity-suppressed",
+        repairCurrency: "pp",
+        auditEvent: "player-system.repair-tax.applied",
+      }),
+    }),
+    rewards: Object.freeze({
+      authorityOwner: "player-system-missions",
+      evaluationChecks: PLAYER_SYSTEM_GOVERNANCE_REWARD_EVALUATION_CHECKS,
+      boundedRewardKinds: PLAYER_SYSTEM_GOVERNANCE_REWARD_KINDS,
+      auditEvent: "player-system.reward-evaluated",
+    }),
+    scorecards,
+  });
+}
+
+export function createPlayerSystemOverdriveState(
+  input: PlayerSystemGovernanceOverdriveStateInput
+): PlayerSystemGovernanceOverdriveState {
+  assertBoolean(input.requested, "requested");
+  assertBoolean(input.ready, "ready");
+
+  if (
+    input.consent !== "required" &&
+    input.consent !== "granted" &&
+    input.consent !== "denied"
+  ) {
+    throw new Error("consent must be required, granted, or denied");
+  }
+
+  const feedback = assertNonEmptyString(input.feedback, "feedback");
+  const requestedAt = normalizeTimestamp(input.requestedAt, "requestedAt");
+  const activatedAt = normalizeTimestamp(input.activatedAt, "activatedAt");
+  const nowIso = normalizeTimestamp(input.now, "now");
+  const denialReason = normalizeNullableString(input.denialReason);
+  const escalationReason = normalizeNullableString(input.escalationReason);
+  const autoDisengageTrigger = input.autoDisengageTrigger ?? null;
+  const durationMs =
+    input.durationMs === undefined
+      ? activatedAt
+        ? 180000
+        : null
+      : assertFiniteNumber(input.durationMs, "durationMs");
+  const now = nowIso ? new Date(nowIso) : new Date();
+
+  let expiresAt: string | null = null;
+  let remainingMs: number | null = null;
+  let status: PlayerSystemGovernanceOverdriveStatus;
+
+  if (input.requested && input.consent === "denied") {
+    status = escalationReason ? "escalated" : "denied";
+  } else if (input.requested && input.consent === "required") {
+    status = "consent-required";
+  } else if (input.requested && activatedAt && durationMs !== null) {
+    const activatedAtDate = new Date(activatedAt);
+    const expiry = new Date(activatedAtDate.getTime() + durationMs);
+    expiresAt = expiry.toISOString();
+    remainingMs = Math.max(0, expiry.getTime() - now.getTime());
+
+    if (autoDisengageTrigger) {
+      status = "auto-disengaged";
+      remainingMs = 0;
+    } else if (now.getTime() >= expiry.getTime()) {
+      status = "expired";
+      remainingMs = 0;
+    } else {
+      status = "active";
+    }
+  } else {
+    status = input.ready ? "ready" : "consent-required";
+  }
+
+  return Object.freeze({
+    status,
+    requested: input.requested,
+    ready: input.ready,
+    consent: input.consent,
+    feedback,
+    requestedAt,
+    activatedAt,
+    expiresAt,
+    durationMs,
+    remainingMs,
+    denialReason,
+    escalationReason,
+    autoDisengageTrigger,
+  });
+}
+
+export function createPlayerSystemRepairTaxAssessment(
+  input: PlayerSystemGovernanceRepairTaxAssessmentInput,
+  contract: PlayerSystemGovernanceContract = createPlayerSystemGovernanceContract()
+): PlayerSystemGovernanceRepairTaxAssessment {
+  assertBoolean(input.repairRequired, "repairRequired");
+  const repairCost =
+    input.repairCost === undefined
+      ? input.mode === "harder-mode"
+        ? 5
+        : 0
+      : assertFiniteNumber(input.repairCost, "repairCost");
+  const ppBalance = assertFiniteNumber(input.ppBalance, "ppBalance");
+  const policy = selectRepairPolicy(input.mode, contract);
+  const canAffordRepair = !input.repairRequired || repairCost === 0 || ppBalance >= repairCost;
+  const feedback = input.repairRequired
+    ? canAffordRepair
+      ? `Repair tax is ${policy.repairCurrency === "pp" ? "funded" : "not charged"} under ${policy.mode}.`
+      : `Repair tax cannot be paid under ${policy.mode}; MCC recovery must wait.`
+    : `No repair-tax consequence is active under ${policy.mode}.`;
+
+  return Object.freeze({
+    mode: input.mode,
+    repairRequired: input.repairRequired,
+    repairCost,
+    canAffordRepair,
+    feedback,
+    policy,
+  });
+}
+
+export function evaluatePlayerSystemRewardPreflight(
+  input: PlayerSystemGovernanceRewardPreflightInput,
+  contract: PlayerSystemGovernanceContract = createPlayerSystemGovernanceContract()
+): PlayerSystemGovernanceRewardPreflightResult {
+  const globalCap = assertFiniteNumber(input.globalCap, "globalCap");
+  const sessionCap = assertFiniteNumber(input.sessionCap, "sessionCap");
+  const grantedGlobal = assertFiniteNumber(input.grantedGlobal, "grantedGlobal");
+  const grantedSession = assertFiniteNumber(input.grantedSession, "grantedSession");
+  const warnings: string[] = [];
+  let allowed = true;
+  let status: PlayerSystemGovernanceRewardPreflightResult["status"] = "allowed";
+
+  if (input.readiness === "blocked") {
+    warnings.push("Readiness gate blocks the reward path.");
+    allowed = false;
+    status = "blocked";
+  } else if (input.readiness === "needs-gate") {
+    warnings.push("Readiness gate still requires explicit confirmation.");
+    status = "warning";
+  }
+
+  if (input.policyAllowed === false) {
+    warnings.push(input.policyReason ?? "Governance policy denied the reward.");
+    allowed = false;
+    status = "blocked";
+  }
+
+  if (grantedGlobal >= globalCap) {
+    warnings.push("Global reward cap has already been reached.");
+    allowed = false;
+    status = "blocked";
+  } else if (globalCap - grantedGlobal <= 1) {
+    warnings.push("Global reward cap is nearly exhausted.");
+    status = status === "allowed" ? "warning" : status;
+  }
+
+  if (grantedSession >= sessionCap) {
+    warnings.push("Session reward cap has already been reached.");
+    allowed = false;
+    status = "blocked";
+  } else if (sessionCap - grantedSession <= 1) {
+    warnings.push("Session reward cap is nearly exhausted.");
+    status = status === "allowed" ? "warning" : status;
+  }
+
+  if (!contract.rewards.boundedRewardKinds.includes(input.rewardType)) {
+    warnings.push("Reward type is outside the bounded reward contract.");
+    allowed = false;
+    status = "blocked";
+  }
+
+  return Object.freeze({
+    status,
+    allowed,
+    rewardSource: input.rewardSource,
+    rewardType: input.rewardType,
+    remainingGlobal: Math.max(0, globalCap - grantedGlobal),
+    remainingSession: Math.max(0, sessionCap - grantedSession),
+    warnings: freezeReadonlyArray(warnings),
+    feedback:
+      warnings.length === 0
+        ? `Reward preflight accepted for ${input.rewardSource}.`
+        : warnings.join(" "),
+  });
+}
+
+export async function evaluatePlayerSystemGovernanceSignals(options: {
+  readonly adapter: PlayerSystemGovernanceEvaluationAdapter;
+  readonly signals: readonly PlayerSystemGovernanceEvaluationSignalInput[];
+}): Promise<PlayerSystemGovernanceEvaluationSummary> {
+  const results: PlayerSystemGovernanceEvaluationSignalResult[] = [];
+
+  for (const signal of options.signals) {
+    try {
+      const result = await options.adapter.observeSignal(signal);
+      results.push(
+        Object.freeze({
+          signalId: result.signalId,
+          accepted: result.accepted,
+          score: result.score,
+          summary: result.summary,
+          metadata: freezeReadonlyRecord(result.metadata),
+        })
+      );
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Unknown adapter failure";
+      results.push(
+        Object.freeze({
+          signalId: signal.signalId,
+          accepted: false,
+          score: 0,
+          summary: signal.summary,
+          metadata: freezeReadonlyRecord(signal.metadata),
+          error: message,
+        })
+      );
+    }
+  }
+
+  const acceptedSignals = results.filter((result) => result.accepted).length;
+  const observedScores = results
+    .filter((result) => !result.error)
+    .map((result) => result.score);
+  const averageScore =
+    observedScores.length === 0
+      ? null
+      : observedScores.reduce((sum, value) => sum + value, 0) / observedScores.length;
+  const status: PlayerSystemGovernanceEvaluationSummary["status"] = results.some(
+    (result) => result.error
+  )
+    ? "degraded"
+    : acceptedSignals === results.length
+      ? "passed"
+      : "failed";
+
+  return Object.freeze({
+    adapterId: options.adapter.adapterId,
+    status,
+    totalSignals: results.length,
+    acceptedSignals,
+    averageScore,
+    results: freezeReadonlyArray(results),
+  });
+}
+
+export function createPlayerSystemGovernanceRuntimeState(
+  input: PlayerSystemGovernanceRuntimeStateInput
+): PlayerSystemGovernanceRuntimeState {
+  const contract = createPlayerSystemGovernanceContract(input.contract);
+  const activeMode = input.activeMode ?? "child-safe";
+  const overdriveState = createPlayerSystemOverdriveState(input.overdrive);
+  const repairTaxAssessment = createPlayerSystemRepairTaxAssessment(
+    input.repairTax,
+    contract
+  );
+  const rewardPreflight = evaluatePlayerSystemRewardPreflight(
+    input.rewardPreflight,
+    contract
+  );
+
+  return Object.freeze({
+    ...contract,
+    enabled: input.enabled,
+    source: input.source ?? "default-disabled",
+    activeMode,
+    overdriveState,
+    repairTaxAssessment,
+    rewardPreflight,
+    evaluationSummary: input.evaluationSummary,
+  });
 }
 
 export function createPlayerSystemTrainingInstitutionReadiness(
