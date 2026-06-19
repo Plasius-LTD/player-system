@@ -263,6 +263,13 @@ describe("@plasius/player-system", () => {
       feedback: "Overdrive is primed but not active yet.",
       requestedAt: "2026-06-19T09:00:00.000Z",
     });
+    const awaitingReadiness = createPlayerSystemOverdriveState({
+      requested: true,
+      ready: false,
+      consent: "granted",
+      feedback: "Overdrive request is still waiting on readiness.",
+      requestedAt: "2026-06-19T09:00:00.000Z",
+    });
     const active = createPlayerSystemOverdriveState({
       requested: true,
       ready: true,
@@ -272,6 +279,15 @@ describe("@plasius/player-system", () => {
       activatedAt: "2026-06-19T09:01:00.000Z",
       now: "2026-06-19T09:02:00.000Z",
       durationMs: 180000,
+    });
+    const defaultDuration = createPlayerSystemOverdriveState({
+      requested: true,
+      ready: true,
+      consent: "granted",
+      feedback: "Overdrive duration defaults when activation is present.",
+      requestedAt: "2026-06-19T09:00:00.000Z",
+      activatedAt: "2026-06-19T09:01:00.000Z",
+      now: "2026-06-19T09:02:00.000Z",
     });
     const expired = createPlayerSystemOverdriveState({
       requested: true,
@@ -298,8 +314,10 @@ describe("@plasius/player-system", () => {
     expect(idle.status).toBe("idle");
     expect(awaitingConsent.status).toBe("consent-required");
     expect(ready.status).toBe("ready");
+    expect(awaitingReadiness.status).toBe("consent-required");
     expect(active.status).toBe("active");
     expect(active.remainingMs).toBe(120000);
+    expect(defaultDuration.durationMs).toBe(180000);
     expect(expired.status).toBe("expired");
     expect(expired.remainingMs).toBe(0);
     expect(autoDisengaged.status).toBe("auto-disengaged");
@@ -511,6 +529,25 @@ describe("@plasius/player-system", () => {
         signalId: "voice-intent",
         accepted: false,
         error: "adapter timeout for voice-intent",
+      }),
+    ]);
+  });
+
+  it("falls back to an unknown adapter failure message for non-Error throws", async () => {
+    const summary = await evaluatePlayerSystemGovernanceSignals({
+      adapter: {
+        adapterId: "player-system-governance-evals",
+        async observeSignal() {
+          throw "timeout";
+        },
+      },
+      signals: [{ signalId: "voice-intent", summary: "Voice command interpretation" }],
+    });
+
+    expect(summary.results).toEqual([
+      expect.objectContaining({
+        signalId: "voice-intent",
+        error: "Unknown adapter failure",
       }),
     ]);
   });
