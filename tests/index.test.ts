@@ -338,6 +338,46 @@ describe("@plasius/player-system", () => {
       policyAllowed: false,
       policyReason: "Voice intent was not confidently resolved.",
     });
+    const sessionWarning = evaluatePlayerSystemRewardPreflight({
+      rewardSource: "mission",
+      rewardType: "route-annotation",
+      globalCap: 5,
+      sessionCap: 2,
+      grantedGlobal: 1,
+      grantedSession: 1,
+      readiness: "ready",
+      policyAllowed: true,
+    });
+    const outsideContract = evaluatePlayerSystemRewardPreflight({
+      rewardSource: "tutorial",
+      rewardType: "xp-bonus" as never,
+      globalCap: 5,
+      sessionCap: 3,
+      grantedGlobal: 1,
+      grantedSession: 1,
+      readiness: "ready",
+      policyAllowed: true,
+    });
+    const needsGateNearCap = evaluatePlayerSystemRewardPreflight({
+      rewardSource: "mission",
+      rewardType: "route-annotation",
+      globalCap: 2,
+      sessionCap: 2,
+      grantedGlobal: 1,
+      grantedSession: 1,
+      readiness: "needs-gate",
+      policyAllowed: true,
+    });
+    const fallbackPolicyDenied = evaluatePlayerSystemRewardPreflight({
+      rewardSource: "mission",
+      rewardType: "trust-surplus",
+      globalCap: 4,
+      sessionCap: 2,
+      grantedGlobal: 0,
+      grantedSession: 0,
+      readiness: "ready",
+      policyAllowed: false,
+    });
 
     expect(allowed.allowed).toBe(true);
     expect(allowed.status).toBe("allowed");
@@ -346,6 +386,21 @@ describe("@plasius/player-system", () => {
     expect(blocked.warnings).toContain("Global reward cap has already been reached.");
     expect(blocked.warnings).toContain(
       "Voice intent was not confidently resolved."
+    );
+    expect(sessionWarning.status).toBe("warning");
+    expect(sessionWarning.warnings).toContain("Session reward cap is nearly exhausted.");
+    expect(outsideContract.allowed).toBe(false);
+    expect(outsideContract.warnings).toContain(
+      "Reward type is outside the bounded reward contract."
+    );
+    expect(needsGateNearCap.status).toBe("warning");
+    expect(needsGateNearCap.warnings).toContain(
+      "Readiness gate still requires explicit confirmation."
+    );
+    expect(needsGateNearCap.warnings).toContain("Global reward cap is nearly exhausted.");
+    expect(needsGateNearCap.warnings).toContain("Session reward cap is nearly exhausted.");
+    expect(fallbackPolicyDenied.warnings).toContain(
+      "Governance policy denied the reward."
     );
   });
 
@@ -361,12 +416,26 @@ describe("@plasius/player-system", () => {
       ppBalance: 9,
       repairCost: 5,
     });
+    const unfunded = createPlayerSystemRepairTaxAssessment({
+      mode: "harder-mode",
+      repairRequired: true,
+      ppBalance: 1,
+      repairCost: 5,
+    });
+    const inactive = createPlayerSystemRepairTaxAssessment({
+      mode: "child-safe",
+      repairRequired: false,
+      ppBalance: 0,
+    });
 
     expect(childSafe.policy.spellImpairment).toBe("none");
     expect(childSafe.canAffordRepair).toBe(true);
     expect(harderMode.policy.spellImpairment).toBe("high-complexity-suppressed");
     expect(harderMode.canAffordRepair).toBe(true);
     expect(harderMode.repairCost).toBe(5);
+    expect(unfunded.canAffordRepair).toBe(false);
+    expect(unfunded.feedback).toContain("MCC recovery must wait");
+    expect(inactive.feedback).toContain("No repair-tax consequence is active");
   });
 
   it("invokes governance evaluation adapters for tutorial, mission-fit, and voice-intent signals", async () => {
@@ -399,6 +468,52 @@ describe("@plasius/player-system", () => {
     expect(summary.status).toBe("failed");
     expect(summary.acceptedSignals).toBe(2);
     expect(summary.results).toHaveLength(3);
+  });
+
+  it("records adapter failures in the governance summary", async () => {
+    const summary = await evaluatePlayerSystemGovernanceSignals({
+      adapter: {
+        adapterId: "player-system-governance-evals",
+        async observeSignal(signal) {
+          throw new Error(`adapter timeout for ${signal.signalId}`);
+        },
+      },
+      signals: [{ signalId: "voice-intent", summary: "Voice command interpretation" }],
+    });
+
+    expect(summary.status).toBe("degraded");
+    expect(summary.averageScore).toBeNull();
+    expect(summary.results).toEqual([
+      expect.objectContaining({
+        signalId: "voice-intent",
+        accepted: false,
+        error: "adapter timeout for voice-intent",
+      }),
+    ]);
+  });
+
+  it("marks governance summaries as passed when every signal is accepted", async () => {
+    const summary = await evaluatePlayerSystemGovernanceSignals({
+      adapter: {
+        adapterId: "player-system-governance-evals",
+        async observeSignal(signal) {
+          return {
+            signalId: signal.signalId,
+            accepted: true,
+            score: 0.95,
+            summary: `Observed ${signal.signalId}`,
+            metadata: { source: "test" },
+          };
+        },
+      },
+      signals: [
+        { signalId: "tutorial-usefulness", summary: "Tutorial branch outcome" },
+        { signalId: "mission-fit", summary: "Mission recommendation outcome" },
+      ],
+    });
+
+    expect(summary.status).toBe("passed");
+    expect(summary.averageScore).toBe(0.95);
   });
 
   it("combines static governance policy with runtime outcomes", () => {
@@ -439,6 +554,79 @@ describe("@plasius/player-system", () => {
     expect(runtime.overdriveState.status).toBe("active");
     expect(runtime.repairTaxAssessment.policy.mode).toBe("harder-mode");
     expect(runtime.rewardPreflight.allowed).toBe(true);
+  });
+
+  it("defaults governance runtime mode and source when they are omitted", () => {
+    const runtime = createPlayerSystemGovernanceRuntimeState({
+      enabled: false,
+      overdrive: {
+        requested: false,
+        ready: true,
+        consent: "granted",
+        feedback: "Governance standby is ready.",
+      },
+      repairTax: {
+        mode: "child-safe",
+        repairRequired: false,
+        ppBalance: 0,
+      },
+      rewardPreflight: {
+        rewardSource: "mission",
+        rewardType: "guidance-credit",
+        globalCap: 1,
+        sessionCap: 1,
+        grantedGlobal: 0,
+        grantedSession: 0,
+        readiness: "ready",
+        policyAllowed: true,
+      },
+      evaluationSummary: {
+        adapterId: "player-system-governance-evals",
+        status: "passed",
+        totalSignals: 0,
+        acceptedSignals: 0,
+        averageScore: null,
+        results: [],
+      },
+    });
+
+    expect(runtime.source).toBe("default-disabled");
+    expect(runtime.activeMode).toBe("child-safe");
+    expect(runtime.overdriveState.status).toBe("ready");
+  });
+
+  it("rejects unsupported overdrive consent values", () => {
+    expect(() =>
+      createPlayerSystemOverdriveState({
+        requested: false,
+        ready: false,
+        consent: "pending" as "required",
+        feedback: "Unsupported state.",
+      })
+    ).toThrow("consent must be required, granted, or denied");
+
+    expect(() =>
+      createPlayerSystemOverdriveState({
+        requested: true,
+        ready: false,
+        consent: "required",
+        feedback: "Timestamp should fail.",
+        requestedAt: "not-a-date",
+      })
+    ).toThrow("requestedAt must be a valid ISO timestamp");
+
+    expect(() =>
+      evaluatePlayerSystemRewardPreflight({
+        rewardSource: "mission",
+        rewardType: "guidance-credit",
+        globalCap: Number.NaN,
+        sessionCap: 1,
+        grantedGlobal: 0,
+        grantedSession: 0,
+        readiness: "ready",
+        policyAllowed: true,
+      })
+    ).toThrow("globalCap must be a finite number");
   });
 
   it("exports runtime NFR defaults behind the inherited feature flag", () => {
