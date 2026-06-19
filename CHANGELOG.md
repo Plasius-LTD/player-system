@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 ## Unreleased
 - **Added**
+  - (placeholder)
+
+- **Changed**
+  - (placeholder)
+
+- **Fixed**
+  - (placeholder)
+
+- **Security**
+  - (placeholder)
+## [0.1.7] - 2026-06-19
+- **Added**
   - Added Player System governance runtime contracts under `isekai.player-system.governance.enabled`, including overdrive prompt state, repair-tax consequences, bounded reward preflight checks, and reusable evaluation-adapter seams.
 
 - **Changed**
@@ -13,6 +25,7 @@ All notable changes to this project will be documented in this file.
 
 - **Security**
   - (placeholder)
+
 ## [0.1.6] - 2026-06-16
 - gate apprenticeship recommendations on eligible crafting-authority handoffs so hybrid training routing does not surface dead-end crafting paths
 
