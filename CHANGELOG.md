@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this file.
 ## Unreleased
 - **Added**
-  - (placeholder)
+  - Added Player System governance runtime contracts under `isekai.player-system.governance.enabled`, including overdrive prompt state, repair-tax consequences, bounded reward preflight checks, and reusable evaluation-adapter seams.
 
 - **Changed**
   - (placeholder)

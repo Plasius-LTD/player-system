@@ -2,10 +2,17 @@ import {
   PLAYER_SYSTEM_POINTS_STORE_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_PACKAGES_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_FEATURE_FLAG_ID,
+  PLAYER_SYSTEM_GOVERNANCE_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_RUNTIME_NFR_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_RUNTIME_PORTABILITY_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_TRAINING_ROUTING_FEATURE_FLAG_ID,
   assessPlayerSystemRuntimePortability,
+  createPlayerSystemGovernanceContract,
+  createPlayerSystemGovernanceRuntimeState,
+  createPlayerSystemOverdriveState,
+  createPlayerSystemRepairTaxAssessment,
+  evaluatePlayerSystemGovernanceSignals,
+  evaluatePlayerSystemRewardPreflight,
   createPlayerSystemTrainingAuthorityHandoff,
   createPlayerSystemTrainingInstitutionReadiness,
   createPlayerSystemTrainingRoutingState,
@@ -213,6 +220,473 @@ describe("@plasius/player-system", () => {
         state: "available",
       },
     });
+  });
+
+  it("exports the governance contract with bounded scorecards and rollout flag", () => {
+    const contract = createPlayerSystemGovernanceContract();
+
+    expect(contract.featureFlagId).toBe(PLAYER_SYSTEM_GOVERNANCE_FEATURE_FLAG_ID);
+    expect(contract.rewards.boundedRewardKinds).toEqual([
+      "guidance-credit",
+      "trust-surplus",
+      "route-annotation",
+      "readiness-preview",
+    ]);
+    expect(contract.scorecards.map((scorecard) => scorecard.id)).toEqual([
+      "tutorial-usefulness",
+      "mission-fit",
+      "preference-learning",
+      "voice-intent",
+      "reward-boundedness",
+    ]);
+    expect(Object.isFrozen(contract.scorecards)).toBe(true);
+  });
+
+  it("models overdrive consent, active duration, and expiry/auto-disengage states", () => {
+    const idle = createPlayerSystemOverdriveState({
+      requested: false,
+      ready: false,
+      consent: "required",
+      feedback: "No overdrive request is active.",
+    });
+    const awaitingConsent = createPlayerSystemOverdriveState({
+      requested: true,
+      ready: false,
+      consent: "required",
+      feedback: "Awaiting player confirmation.",
+      requestedAt: "2026-06-19T09:00:00.000Z",
+    });
+    const ready = createPlayerSystemOverdriveState({
+      requested: true,
+      ready: true,
+      consent: "granted",
+      feedback: "Overdrive is primed but not active yet.",
+      requestedAt: "2026-06-19T09:00:00.000Z",
+    });
+    const awaitingReadiness = createPlayerSystemOverdriveState({
+      requested: true,
+      ready: false,
+      consent: "granted",
+      feedback: "Overdrive request is still waiting on readiness.",
+      requestedAt: "2026-06-19T09:00:00.000Z",
+    });
+    const active = createPlayerSystemOverdriveState({
+      requested: true,
+      ready: true,
+      consent: "granted",
+      feedback: "Overdrive engaged.",
+      requestedAt: "2026-06-19T09:00:00.000Z",
+      activatedAt: "2026-06-19T09:01:00.000Z",
+      now: "2026-06-19T09:02:00.000Z",
+      durationMs: 180000,
+    });
+    const defaultDuration = createPlayerSystemOverdriveState({
+      requested: true,
+      ready: true,
+      consent: "granted",
+      feedback: "Overdrive duration defaults when activation is present.",
+      requestedAt: "2026-06-19T09:00:00.000Z",
+      activatedAt: "2026-06-19T09:01:00.000Z",
+      now: "2026-06-19T09:02:00.000Z",
+    });
+    const expired = createPlayerSystemOverdriveState({
+      requested: true,
+      ready: true,
+      consent: "granted",
+      feedback: "Overdrive expired.",
+      requestedAt: "2026-06-19T09:00:00.000Z",
+      activatedAt: "2026-06-19T09:01:00.000Z",
+      now: "2026-06-19T09:05:00.000Z",
+      durationMs: 180000,
+    });
+    const autoDisengaged = createPlayerSystemOverdriveState({
+      requested: true,
+      ready: true,
+      consent: "granted",
+      feedback: "Overdrive disengaged for safety.",
+      requestedAt: "2026-06-19T09:00:00.000Z",
+      activatedAt: "2026-06-19T09:01:00.000Z",
+      now: "2026-06-19T09:02:00.000Z",
+      durationMs: 180000,
+      autoDisengageTrigger: "fatigue-threshold-breached",
+    });
+
+    expect(idle.status).toBe("idle");
+    expect(awaitingConsent.status).toBe("consent-required");
+    expect(ready.status).toBe("ready");
+    expect(awaitingReadiness.status).toBe("consent-required");
+    expect(active.status).toBe("active");
+    expect(active.remainingMs).toBe(120000);
+    expect(defaultDuration.durationMs).toBe(180000);
+    expect(expired.status).toBe("expired");
+    expect(expired.remainingMs).toBe(0);
+    expect(autoDisengaged.status).toBe("auto-disengaged");
+    expect(autoDisengaged.autoDisengageTrigger).toBe(
+      "fatigue-threshold-breached"
+    );
+  });
+
+  it("surfaces governance denial and escalation states", () => {
+    const denied = createPlayerSystemOverdriveState({
+      requested: true,
+      ready: false,
+      consent: "denied",
+      feedback: "Overdrive denied by safety governance.",
+      denialReason: "fatigue ceiling exceeded",
+    });
+    const escalated = createPlayerSystemOverdriveState({
+      requested: true,
+      ready: false,
+      consent: "denied",
+      feedback: "Overdrive escalated for guardian review.",
+      denialReason: "child-safe guardrail exceeded",
+      escalationReason: "guardian-review-required",
+    });
+
+    expect(denied.status).toBe("denied");
+    expect(denied.denialReason).toBe("fatigue ceiling exceeded");
+    expect(escalated.status).toBe("escalated");
+    expect(escalated.escalationReason).toBe("guardian-review-required");
+  });
+
+  it("evaluates bounded reward preflight against caps, readiness, and policy outcomes", () => {
+    const allowed = evaluatePlayerSystemRewardPreflight({
+      rewardSource: "mission",
+      rewardType: "guidance-credit",
+      globalCap: 10,
+      sessionCap: 4,
+      grantedGlobal: 4,
+      grantedSession: 1,
+      readiness: "ready",
+      policyAllowed: true,
+    });
+    const blocked = evaluatePlayerSystemRewardPreflight({
+      rewardSource: "voice-intent",
+      rewardType: "readiness-preview",
+      globalCap: 2,
+      sessionCap: 1,
+      grantedGlobal: 2,
+      grantedSession: 1,
+      readiness: "blocked",
+      policyAllowed: false,
+      policyReason: "Voice intent was not confidently resolved.",
+    });
+    const sessionWarning = evaluatePlayerSystemRewardPreflight({
+      rewardSource: "mission",
+      rewardType: "route-annotation",
+      globalCap: 5,
+      sessionCap: 2,
+      grantedGlobal: 1,
+      grantedSession: 1,
+      readiness: "ready",
+      policyAllowed: true,
+    });
+    const outsideContract = evaluatePlayerSystemRewardPreflight({
+      rewardSource: "tutorial",
+      rewardType: "xp-bonus" as never,
+      globalCap: 5,
+      sessionCap: 3,
+      grantedGlobal: 1,
+      grantedSession: 1,
+      readiness: "ready",
+      policyAllowed: true,
+    });
+    const needsGateNearCap = evaluatePlayerSystemRewardPreflight({
+      rewardSource: "mission",
+      rewardType: "route-annotation",
+      globalCap: 2,
+      sessionCap: 2,
+      grantedGlobal: 1,
+      grantedSession: 1,
+      readiness: "needs-gate",
+      policyAllowed: true,
+    });
+    const fallbackPolicyDenied = evaluatePlayerSystemRewardPreflight({
+      rewardSource: "mission",
+      rewardType: "trust-surplus",
+      globalCap: 4,
+      sessionCap: 2,
+      grantedGlobal: 0,
+      grantedSession: 0,
+      readiness: "ready",
+      policyAllowed: false,
+    });
+
+    expect(allowed.allowed).toBe(true);
+    expect(allowed.status).toBe("allowed");
+    expect(blocked.allowed).toBe(false);
+    expect(blocked.status).toBe("blocked");
+    expect(blocked.warnings).toContain("Global reward cap has already been reached.");
+    expect(blocked.warnings).toContain(
+      "Voice intent was not confidently resolved."
+    );
+    expect(sessionWarning.status).toBe("warning");
+    expect(sessionWarning.warnings).toContain("Session reward cap is nearly exhausted.");
+    expect(outsideContract.allowed).toBe(false);
+    expect(outsideContract.warnings).toContain(
+      "Reward type is outside the bounded reward contract."
+    );
+    expect(needsGateNearCap.status).toBe("warning");
+    expect(needsGateNearCap.warnings).toContain(
+      "Readiness gate still requires explicit confirmation."
+    );
+    expect(needsGateNearCap.warnings).toContain("Global reward cap is nearly exhausted.");
+    expect(needsGateNearCap.warnings).toContain("Session reward cap is nearly exhausted.");
+    expect(fallbackPolicyDenied.warnings).toContain(
+      "Governance policy denied the reward."
+    );
+  });
+
+  it("assesses repair-tax consequences for child-safe and harder-mode flows", () => {
+    const childSafe = createPlayerSystemRepairTaxAssessment({
+      mode: "child-safe",
+      repairRequired: true,
+      ppBalance: 2,
+    });
+    const harderMode = createPlayerSystemRepairTaxAssessment({
+      mode: "harder-mode",
+      repairRequired: true,
+      ppBalance: 9,
+      repairCost: 5,
+    });
+    const unfunded = createPlayerSystemRepairTaxAssessment({
+      mode: "harder-mode",
+      repairRequired: true,
+      ppBalance: 1,
+      repairCost: 5,
+    });
+    const inactive = createPlayerSystemRepairTaxAssessment({
+      mode: "child-safe",
+      repairRequired: false,
+      ppBalance: 0,
+    });
+    const childSafeWithSuppliedCost = createPlayerSystemRepairTaxAssessment({
+      mode: "child-safe",
+      repairRequired: true,
+      ppBalance: 0,
+      repairCost: 9,
+    });
+
+    expect(childSafe.policy.spellImpairment).toBe("none");
+    expect(childSafe.canAffordRepair).toBe(true);
+    expect(harderMode.policy.spellImpairment).toBe("high-complexity-suppressed");
+    expect(harderMode.canAffordRepair).toBe(true);
+    expect(harderMode.repairCost).toBe(5);
+    expect(unfunded.canAffordRepair).toBe(false);
+    expect(unfunded.feedback).toContain("MCC recovery must wait");
+    expect(inactive.feedback).toContain("No repair-tax consequence is active");
+    expect(childSafeWithSuppliedCost.repairCost).toBe(0);
+    expect(childSafeWithSuppliedCost.canAffordRepair).toBe(true);
+  });
+
+  it("invokes governance evaluation adapters for tutorial, mission-fit, and voice-intent signals", async () => {
+    const calls: string[] = [];
+    const summary = await evaluatePlayerSystemGovernanceSignals({
+      adapter: {
+        adapterId: "player-system-governance-evals",
+        async observeSignal(signal) {
+          calls.push(signal.signalId);
+          return {
+            signalId: signal.signalId,
+            accepted: signal.signalId !== "voice-intent",
+            score: signal.signalId === "voice-intent" ? 0.58 : 0.92,
+            summary: `Observed ${signal.signalId}`,
+          };
+        },
+      },
+      signals: [
+        { signalId: "tutorial-usefulness", summary: "Tutorial branch outcome" },
+        { signalId: "mission-fit", summary: "Mission recommendation outcome" },
+        { signalId: "voice-intent", summary: "Voice command interpretation" },
+      ],
+    });
+
+    expect(calls).toEqual([
+      "tutorial-usefulness",
+      "mission-fit",
+      "voice-intent",
+    ]);
+    expect(summary.status).toBe("failed");
+    expect(summary.acceptedSignals).toBe(2);
+    expect(summary.results).toHaveLength(3);
+  });
+
+  it("records adapter failures in the governance summary", async () => {
+    const summary = await evaluatePlayerSystemGovernanceSignals({
+      adapter: {
+        adapterId: "player-system-governance-evals",
+        async observeSignal(signal) {
+          throw new Error(`adapter timeout for ${signal.signalId}`);
+        },
+      },
+      signals: [{ signalId: "voice-intent", summary: "Voice command interpretation" }],
+    });
+
+    expect(summary.status).toBe("degraded");
+    expect(summary.averageScore).toBeNull();
+    expect(summary.results).toEqual([
+      expect.objectContaining({
+        signalId: "voice-intent",
+        accepted: false,
+        error: "adapter timeout for voice-intent",
+      }),
+    ]);
+  });
+
+  it("falls back to an unknown adapter failure message for non-Error throws", async () => {
+    const summary = await evaluatePlayerSystemGovernanceSignals({
+      adapter: {
+        adapterId: "player-system-governance-evals",
+        async observeSignal() {
+          throw "timeout";
+        },
+      },
+      signals: [{ signalId: "voice-intent", summary: "Voice command interpretation" }],
+    });
+
+    expect(summary.results).toEqual([
+      expect.objectContaining({
+        signalId: "voice-intent",
+        error: "Unknown adapter failure",
+      }),
+    ]);
+  });
+
+  it("marks governance summaries as passed when every signal is accepted", async () => {
+    const summary = await evaluatePlayerSystemGovernanceSignals({
+      adapter: {
+        adapterId: "player-system-governance-evals",
+        async observeSignal(signal) {
+          return {
+            signalId: signal.signalId,
+            accepted: true,
+            score: 0.95,
+            summary: `Observed ${signal.signalId}`,
+            metadata: { source: "test" },
+          };
+        },
+      },
+      signals: [
+        { signalId: "tutorial-usefulness", summary: "Tutorial branch outcome" },
+        { signalId: "mission-fit", summary: "Mission recommendation outcome" },
+      ],
+    });
+
+    expect(summary.status).toBe("passed");
+    expect(summary.averageScore).toBe(0.95);
+  });
+
+  it("combines static governance policy with runtime outcomes", () => {
+    const runtime = createPlayerSystemGovernanceRuntimeState({
+      enabled: true,
+      source: "feature-flag",
+      activeMode: "harder-mode",
+      overdrive: {
+        requested: true,
+        ready: true,
+        consent: "granted",
+        feedback: "Overdrive is active.",
+        requestedAt: "2026-06-19T09:00:00.000Z",
+        activatedAt: "2026-06-19T09:01:00.000Z",
+        now: "2026-06-19T09:02:00.000Z",
+        durationMs: 180000,
+      },
+      repairTax: {
+        mode: "harder-mode",
+        repairRequired: true,
+        ppBalance: 7,
+      },
+      rewardPreflight: {
+        rewardSource: "mission",
+        rewardType: "guidance-credit",
+        globalCap: 8,
+        sessionCap: 3,
+        grantedGlobal: 3,
+        grantedSession: 1,
+        readiness: "ready",
+        policyAllowed: true,
+      },
+    });
+
+    expect(runtime.enabled).toBe(true);
+    expect(runtime.source).toBe("feature-flag");
+    expect(runtime.activeMode).toBe("harder-mode");
+    expect(runtime.overdriveState.status).toBe("active");
+    expect(runtime.repairTaxAssessment.policy.mode).toBe("harder-mode");
+    expect(runtime.rewardPreflight.allowed).toBe(true);
+  });
+
+  it("defaults governance runtime mode and source when they are omitted", () => {
+    const runtime = createPlayerSystemGovernanceRuntimeState({
+      enabled: false,
+      overdrive: {
+        requested: false,
+        ready: true,
+        consent: "granted",
+        feedback: "Governance standby is ready.",
+      },
+      repairTax: {
+        mode: "child-safe",
+        repairRequired: false,
+        ppBalance: 0,
+      },
+      rewardPreflight: {
+        rewardSource: "mission",
+        rewardType: "guidance-credit",
+        globalCap: 1,
+        sessionCap: 1,
+        grantedGlobal: 0,
+        grantedSession: 0,
+        readiness: "ready",
+        policyAllowed: true,
+      },
+      evaluationSummary: {
+        adapterId: "player-system-governance-evals",
+        status: "passed",
+        totalSignals: 0,
+        acceptedSignals: 0,
+        averageScore: null,
+        results: [],
+      },
+    });
+
+    expect(runtime.source).toBe("default-disabled");
+    expect(runtime.activeMode).toBe("child-safe");
+    expect(runtime.overdriveState.status).toBe("idle");
+  });
+
+  it("rejects unsupported overdrive consent values", () => {
+    expect(() =>
+      createPlayerSystemOverdriveState({
+        requested: false,
+        ready: false,
+        consent: "pending" as "required",
+        feedback: "Unsupported state.",
+      })
+    ).toThrow("consent must be required, granted, or denied");
+
+    expect(() =>
+      createPlayerSystemOverdriveState({
+        requested: true,
+        ready: false,
+        consent: "required",
+        feedback: "Timestamp should fail.",
+        requestedAt: "not-a-date",
+      })
+    ).toThrow("requestedAt must be a valid ISO timestamp");
+
+    expect(() =>
+      evaluatePlayerSystemRewardPreflight({
+        rewardSource: "mission",
+        rewardType: "guidance-credit",
+        globalCap: Number.NaN,
+        sessionCap: 1,
+        grantedGlobal: 0,
+        grantedSession: 0,
+        readiness: "ready",
+        policyAllowed: true,
+      })
+    ).toThrow("globalCap must be a finite number");
   });
 
   it("exports runtime NFR defaults behind the inherited feature flag", () => {

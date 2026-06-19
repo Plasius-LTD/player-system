@@ -169,6 +169,27 @@ The inherited feature flag for this work is
 - proto-social devolution eligibility and execution-state modeling, including social-lock closure, single-use exhaustion, and PP balance checks
 - non-rendering state that matches the site-facing vocabulary closely enough for later consumer cutover without embedding renderer logic here
 
+## Governance Runtime
+
+The inherited feature flag for this work is
+`isekai.player-system.governance.enabled`.
+
+`createPlayerSystemGovernanceContract()`,
+`createPlayerSystemGovernanceRuntimeState()`,
+`createPlayerSystemOverdriveState()`,
+`createPlayerSystemRepairTaxAssessment()`,
+`evaluatePlayerSystemRewardPreflight()`, and
+`evaluatePlayerSystemGovernanceSignals()` now provide:
+
+- explicit overdrive consent, duration, expiry, denial, escalation, and
+  auto-disengage runtime state
+- child-safe vs harder-mode repair-tax consequences with MCC impairment
+  messaging and affordability checks
+- bounded reward preflight checks for readiness, cap pressure, and policy
+  denial paths before the host surfaces a grant
+- reusable evaluation-adapter seams for tutorial usefulness, mission fit,
+  preference learning, voice intent, and reward-boundedness scorecards
+
 ## Governance
 
 - ADRs: [docs/adrs](./docs/adrs)
