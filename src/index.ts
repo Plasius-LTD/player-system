@@ -1522,11 +1522,13 @@ export function createPlayerSystemOverdriveState(
   let remainingMs: number | null = null;
   let status: PlayerSystemGovernanceOverdriveStatus;
 
-  if (input.requested && input.consent === "denied") {
+  if (!input.requested) {
+    status = "idle";
+  } else if (input.consent === "denied") {
     status = escalationReason ? "escalated" : "denied";
-  } else if (input.requested && input.consent === "required") {
+  } else if (input.consent === "required") {
     status = "consent-required";
-  } else if (input.requested && activatedAt && durationMs !== null) {
+  } else if (activatedAt && durationMs !== null) {
     const activatedAtDate = new Date(activatedAt);
     const expiry = new Date(activatedAtDate.getTime() + durationMs);
     expiresAt = expiry.toISOString();
@@ -1568,11 +1570,11 @@ export function createPlayerSystemRepairTaxAssessment(
 ): PlayerSystemGovernanceRepairTaxAssessment {
   assertBoolean(input.repairRequired, "repairRequired");
   const repairCost =
-    input.repairCost === undefined
-      ? input.mode === "harder-mode"
+    input.mode === "harder-mode"
+      ? input.repairCost === undefined
         ? 5
-        : 0
-      : assertFiniteNumber(input.repairCost, "repairCost");
+        : assertFiniteNumber(input.repairCost, "repairCost")
+      : 0;
   const ppBalance = assertFiniteNumber(input.ppBalance, "ppBalance");
   const policy = selectRepairPolicy(input.mode, contract);
   const canAffordRepair = !input.repairRequired || repairCost === 0 || ppBalance >= repairCost;

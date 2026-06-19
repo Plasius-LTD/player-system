@@ -243,11 +243,24 @@ describe("@plasius/player-system", () => {
   });
 
   it("models overdrive consent, active duration, and expiry/auto-disengage states", () => {
+    const idle = createPlayerSystemOverdriveState({
+      requested: false,
+      ready: false,
+      consent: "required",
+      feedback: "No overdrive request is active.",
+    });
     const awaitingConsent = createPlayerSystemOverdriveState({
       requested: true,
       ready: false,
       consent: "required",
       feedback: "Awaiting player confirmation.",
+      requestedAt: "2026-06-19T09:00:00.000Z",
+    });
+    const ready = createPlayerSystemOverdriveState({
+      requested: true,
+      ready: true,
+      consent: "granted",
+      feedback: "Overdrive is primed but not active yet.",
       requestedAt: "2026-06-19T09:00:00.000Z",
     });
     const active = createPlayerSystemOverdriveState({
@@ -282,7 +295,9 @@ describe("@plasius/player-system", () => {
       autoDisengageTrigger: "fatigue-threshold-breached",
     });
 
+    expect(idle.status).toBe("idle");
     expect(awaitingConsent.status).toBe("consent-required");
+    expect(ready.status).toBe("ready");
     expect(active.status).toBe("active");
     expect(active.remainingMs).toBe(120000);
     expect(expired.status).toBe("expired");
@@ -427,6 +442,12 @@ describe("@plasius/player-system", () => {
       repairRequired: false,
       ppBalance: 0,
     });
+    const childSafeWithSuppliedCost = createPlayerSystemRepairTaxAssessment({
+      mode: "child-safe",
+      repairRequired: true,
+      ppBalance: 0,
+      repairCost: 9,
+    });
 
     expect(childSafe.policy.spellImpairment).toBe("none");
     expect(childSafe.canAffordRepair).toBe(true);
@@ -436,6 +457,8 @@ describe("@plasius/player-system", () => {
     expect(unfunded.canAffordRepair).toBe(false);
     expect(unfunded.feedback).toContain("MCC recovery must wait");
     expect(inactive.feedback).toContain("No repair-tax consequence is active");
+    expect(childSafeWithSuppliedCost.repairCost).toBe(0);
+    expect(childSafeWithSuppliedCost.canAffordRepair).toBe(true);
   });
 
   it("invokes governance evaluation adapters for tutorial, mission-fit, and voice-intent signals", async () => {
@@ -592,7 +615,7 @@ describe("@plasius/player-system", () => {
 
     expect(runtime.source).toBe("default-disabled");
     expect(runtime.activeMode).toBe("child-safe");
-    expect(runtime.overdriveState.status).toBe("ready");
+    expect(runtime.overdriveState.status).toBe("idle");
   });
 
   it("rejects unsupported overdrive consent values", () => {
