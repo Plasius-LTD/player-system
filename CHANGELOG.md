@@ -2,6 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 ## Unreleased
+
 - **Added**
   - (placeholder)
 
@@ -13,6 +14,20 @@ All notable changes to this project will be documented in this file.
 
 - **Security**
   - (placeholder)
+
+## [0.1.8] - 2026-06-22
+- **Added**
+  - (placeholder)
+
+- **Changed**
+  - (placeholder)
+
+- **Fixed**
+  - (placeholder)
+
+- **Security**
+  - (placeholder)
+
 ## [0.1.7] - 2026-06-19
 - **Added**
   - Added Player System governance runtime contracts under `isekai.player-system.governance.enabled`, including overdrive prompt state, repair-tax consequences, bounded reward preflight checks, and reusable evaluation-adapter seams.
@@ -43,3 +58,4 @@ All notable changes to this project will be documented in this file.
 - preserve release-branch version and changelog edits so protected-main publish runs can complete from prepared metadata on `main`
 - detect unpublished prepared releases from `main` metadata instead of merge-commit titles so merged release PRs actually publish
 - promote `Unreleased` changelog entries into versioned release sections through a tested helper instead of fragile inline shell parsing
+[0.1.8]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.8
