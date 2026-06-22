@@ -15,6 +15,20 @@ All notable changes to this project will be documented in this file.
 - **Security**
   - (placeholder)
 
+## [0.1.9] - 2026-06-22
+
+- **Added**
+  - (placeholder)
+
+- **Changed**
+  - (placeholder)
+
+- **Fixed**
+  - (placeholder)
+
+- **Security**
+  - (placeholder)
+
 ## [0.1.8] - 2026-06-22
 - **Added**
   - (placeholder)
@@ -59,3 +73,4 @@ All notable changes to this project will be documented in this file.
 - detect unpublished prepared releases from `main` metadata instead of merge-commit titles so merged release PRs actually publish
 - promote `Unreleased` changelog entries into versioned release sections through a tested helper instead of fragile inline shell parsing
 [0.1.8]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.8
+[0.1.9]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.9
