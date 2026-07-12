@@ -1,4 +1,5 @@
 import {
+  PLAYER_SYSTEM_AUDIO_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_POINTS_STORE_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_PACKAGES_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_FEATURE_FLAG_ID,
@@ -22,12 +23,20 @@ import {
   createPlayerSystemRuntimePortabilityContract,
   defaultPlayerSystemRuntimeContract,
   defaultPlayerSystemRuntimePortabilityContract,
+  createPlayerSystemVoiceCommandRegistration,
+  isPlayerSystemAudioFocusMode,
   isPlayerSystemAuthorityBand,
   isPlayerSystemEvolutionStage,
   isPlayerSystemModule,
   isPlayerSystemMode,
   packageDescriptor,
+  resolvePlayerSystemAudioRoute,
+  resolvePlayerSystemVoiceCommand,
 } from "../src/index.js";
+import {
+  createAiSpeechLocalizedCue,
+  createAiSpeechNarratedResponse,
+} from "@plasius/ai-speech";
 
 describe("@plasius/player-system", () => {
   it("exports the package descriptor", () => {
@@ -71,6 +80,130 @@ describe("@plasius/player-system", () => {
     expect(state.preferenceSignals).toHaveLength(1);
     expect(Object.isFrozen(state.preferenceSignals)).toBe(true);
     expect(Object.isFrozen(state.preferenceSignals[0])).toBe(true);
+  });
+
+  it("routes narrated responses through the shared audio policy", () => {
+    const contract = createAiSpeechNarratedResponse({
+      id: "tutorial-first-spell",
+      utteranceId: "tutorial-first-spell-v1",
+      locale: "en-GB",
+      priority: "high",
+      ducking: "music",
+      combatSafeDelivery: "condensed",
+    });
+
+    const route = resolvePlayerSystemAudioRoute({
+      contract,
+      context: {
+        focusMode: "focused",
+        featureFlags: {
+          [PLAYER_SYSTEM_AUDIO_FEATURE_FLAG_ID]: true,
+        },
+      },
+    });
+
+    expect(route.featureFlagId).toBe(PLAYER_SYSTEM_AUDIO_FEATURE_FLAG_ID);
+    expect(route.decision).toMatchObject({
+      deliver: true,
+      mode: "full",
+      ducking: "music",
+    });
+    expect(Object.isFrozen(route)).toBe(true);
+  });
+
+  it("fails closed for suppressed combat-safe cues and disabled rollout", () => {
+    const cue = createAiSpeechLocalizedCue({
+      id: "mission-progress",
+      cueFamily: "mission",
+      cueId: "mission-progress",
+      locale: "en-GB",
+      priority: "normal",
+      ducking: "music",
+      combatSafeDelivery: "suppressed",
+    });
+
+    expect(
+      resolvePlayerSystemAudioRoute({
+        contract: cue,
+        context: {
+          focusMode: "combat-safe",
+          featureFlags: {
+            [PLAYER_SYSTEM_AUDIO_FEATURE_FLAG_ID]: true,
+          },
+        },
+      }).decision
+    ).toMatchObject({
+      deliver: false,
+      reasonCodes: ["combat-safe-priority-suppressed"],
+    });
+
+    expect(
+      resolvePlayerSystemAudioRoute({
+        contract: cue,
+        context: { focusMode: "ambient" },
+      }).decision.reasonCodes
+    ).toEqual(["player-system-audio-rollout-disabled"]);
+    expect(isPlayerSystemAudioFocusMode("combat-safe")).toBe(true);
+    expect(isPlayerSystemAudioFocusMode("unknown")).toBe(false);
+  });
+
+  it("creates pane-scoped voice commands and resolves combat-safe access", () => {
+    const registration = createPlayerSystemVoiceCommandRegistration({
+      name: "tutorial.read-next",
+      patterns: ["read next tutorial", /continue tutorial/iu],
+      focusedPanes: ["tutorial"],
+      commandFamily: "tutorial",
+      handler: ({ sessionId }) => sessionId.length > 0,
+    });
+
+    expect(registration.scope).toMatchObject({
+      focusedPanes: ["tutorial"],
+      commandFamily: "tutorial",
+      allowInCombatSafe: false,
+    });
+    expect(Object.isFrozen(registration)).toBe(true);
+    expect(Object.isFrozen(registration.scope)).toBe(true);
+    expect(
+      resolvePlayerSystemVoiceCommand(registration, {
+        focusedPane: "tutorial",
+        allowedCommandFamilies: ["tutorial", "mission"],
+      })
+    ).toEqual({ allowed: true, reason: "allowed" });
+    expect(
+      resolvePlayerSystemVoiceCommand(registration, { focusedPane: "missions" })
+    ).toEqual({ allowed: false, reason: "focused-pane-required" });
+    expect(
+      resolvePlayerSystemVoiceCommand(registration, {
+        focusedPane: "tutorial",
+        combatSafe: true,
+      })
+    ).toEqual({ allowed: false, reason: "combat-safe-restricted" });
+  });
+
+  it("allows explicitly safe MCC and warning commands and validates bounds", () => {
+    const registration = createPlayerSystemVoiceCommandRegistration({
+      name: "mcc.read-warning",
+      focusedPanes: ["mcc", "warning"],
+      commandFamily: "mcc",
+      allowInCombatSafe: true,
+      handler: () => "success",
+    });
+
+    expect(
+      resolvePlayerSystemVoiceCommand(registration, {
+        focusedPane: "warning",
+        combatSafe: true,
+        allowedCommandFamilies: ["mcc"],
+      })
+    ).toEqual({ allowed: true, reason: "allowed" });
+    expect(() =>
+      createPlayerSystemVoiceCommandRegistration({
+        name: "invalid",
+        focusedPanes: ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
+        commandFamily: "warning",
+        handler: () => "success",
+      })
+    ).toThrow("focusedPanes must contain at most 8 entries");
   });
 
   it("guards valid modes", () => {

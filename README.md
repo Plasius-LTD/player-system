@@ -36,6 +36,24 @@ npm install @plasius/player-system
 
 It does not own rendering, world mutation, or institutional authority.
 
+## Audio and voice orchestration
+
+The inherited feature flag for Player System audio is
+`isekai.player-system.audio.enabled`.
+
+`resolvePlayerSystemAudioRoute()` adapts the shared `@plasius/ai-speech`
+contracts to ambient, focused, and combat-safe runtime contexts. Rollout,
+mute, duplicate, priority, ducking, and combat-safe delivery decisions remain
+fail-closed in the shared speech policy.
+
+`createPlayerSystemVoiceCommandRegistration()` creates renderer-neutral voice
+registrations with pane scopes, command families, and explicit combat-safe
+opt-in. `resolvePlayerSystemVoiceCommand()` applies the same focus and
+combat-safe rules that a host voice package can consume without making this
+package depend on a React runtime. Tutorial, mission, MCC, narration, and
+warning command families are supported, with additional host-defined families
+allowed for future modules.
+
 ## Demo
 
 ```bash
