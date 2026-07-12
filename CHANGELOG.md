@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 - **Added**
+  - (placeholder)
+
+- **Changed**
+  - (placeholder)
+
+- **Fixed**
+  - (placeholder)
+
+- **Security**
+  - (placeholder)
+
+## [0.1.10] - 2026-07-12
+
+- **Added**
   - Added renderer-neutral Player System audio routing and pane-aware voice-command registrations behind `isekai.player-system.audio.enabled`.
 
 - **Changed**
@@ -74,3 +88,4 @@ All notable changes to this project will be documented in this file.
 - promote `Unreleased` changelog entries into versioned release sections through a tested helper instead of fragile inline shell parsing
 [0.1.8]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.8
 [0.1.9]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.9
+[0.1.10]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.10
