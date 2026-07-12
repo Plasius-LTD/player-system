@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 - **Added**
-  - (placeholder)
+  - Added renderer-neutral Player System audio routing and pane-aware voice-command registrations behind `isekai.player-system.audio.enabled`.
 
 - **Changed**
   - (placeholder)

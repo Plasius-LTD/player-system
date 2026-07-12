@@ -3,6 +3,13 @@ import {
   type MccExpressionTrack,
   type TrainingInstitutionType,
 } from "@plasius/training";
+import {
+  resolveAiSpeechAudioPolicy,
+  type AiSpeechAudioContract,
+  type AiSpeechAudioFocusMode,
+  type AiSpeechAudioPolicyDecision,
+  type AiSpeechFeatureFlagSnapshot,
+} from "@plasius/ai-speech";
 
 export interface PackageDescriptor {
   readonly packageName: string;
@@ -115,6 +122,80 @@ export interface PlayerSystemSessionState {
   readonly combatSafe: boolean;
   readonly activeModule: PlayerSystemModule | null;
   readonly preferenceSignals: readonly PlayerPreferenceSignal[];
+}
+
+export const PLAYER_SYSTEM_AUDIO_FEATURE_FLAG_ID =
+  "isekai.player-system.audio.enabled" as const;
+
+export const PLAYER_SYSTEM_VOICE_COMMAND_FAMILIES = Object.freeze([
+  "narration",
+  "tutorial",
+  "mission",
+  "mcc",
+  "warning",
+] as const);
+
+export type PlayerSystemVoiceCommandFamily =
+  (typeof PLAYER_SYSTEM_VOICE_COMMAND_FAMILIES)[number] | (string & {});
+
+export interface PlayerSystemAudioContext {
+  readonly focusMode: AiSpeechAudioFocusMode;
+  readonly featureFlags?: AiSpeechFeatureFlagSnapshot;
+  readonly masterMuted?: boolean;
+  readonly userMuted?: boolean;
+  readonly activeContractIds?: readonly string[];
+}
+
+export interface PlayerSystemAudioRoute {
+  readonly featureFlagId: typeof PLAYER_SYSTEM_AUDIO_FEATURE_FLAG_ID;
+  readonly focusMode: AiSpeechAudioFocusMode;
+  readonly contract: AiSpeechAudioContract;
+  readonly decision: AiSpeechAudioPolicyDecision;
+}
+
+export interface PlayerSystemVoiceCommandScope {
+  readonly focusedPanes?: readonly string[];
+  readonly commandFamily: PlayerSystemVoiceCommandFamily;
+  readonly allowInCombatSafe: boolean;
+}
+
+export type PlayerSystemVoiceCommandActivation = (input: {
+  readonly sessionId: string;
+  readonly lang?: string;
+  readonly params?: Readonly<Record<string, unknown>>;
+}) => Promise<"success" | "no-match" | boolean> | "success" | "no-match" | boolean;
+
+export interface PlayerSystemVoiceCommandRegistration {
+  readonly name: string;
+  readonly patterns: readonly (string | RegExp)[];
+  readonly scope: PlayerSystemVoiceCommandScope;
+  readonly handler: PlayerSystemVoiceCommandActivation;
+}
+
+export interface PlayerSystemVoiceCommandRegistrationInput {
+  readonly name: string;
+  readonly patterns?: readonly (string | RegExp)[];
+  readonly focusedPanes?: readonly string[];
+  readonly commandFamily: PlayerSystemVoiceCommandFamily;
+  readonly allowInCombatSafe?: boolean;
+  readonly handler: PlayerSystemVoiceCommandActivation;
+}
+
+export interface PlayerSystemVoiceCommandContext {
+  readonly focusedPane?: string | null;
+  readonly combatSafe?: boolean;
+  readonly allowedCommandFamilies?: readonly string[];
+}
+
+export type PlayerSystemVoiceCommandResolutionReason =
+  | "allowed"
+  | "focused-pane-required"
+  | "command-family-not-allowed"
+  | "combat-safe-restricted";
+
+export interface PlayerSystemVoiceCommandResolution {
+  readonly allowed: boolean;
+  readonly reason: PlayerSystemVoiceCommandResolutionReason;
 }
 
 export interface PlayerSystemCompositionSample {
@@ -1891,6 +1972,142 @@ export function createPlayerSystemTrainingRoutingState(
     blockedPrerequisites,
     trainingAuthority,
     craftingAuthorities,
+  });
+}
+
+export interface ResolvePlayerSystemAudioRouteInput {
+  readonly contract: AiSpeechAudioContract;
+  readonly context: PlayerSystemAudioContext;
+}
+
+export function isPlayerSystemAudioFocusMode(
+  value: unknown
+): value is AiSpeechAudioFocusMode {
+  return value === "ambient" || value === "focused" || value === "combat-safe";
+}
+
+/**
+ * Resolve a speech contract through the shared audio policy without coupling
+ * the Player System package to a renderer or audio engine.
+ */
+export function resolvePlayerSystemAudioRoute(
+  input: ResolvePlayerSystemAudioRouteInput
+): PlayerSystemAudioRoute {
+  if (!isPlayerSystemAudioFocusMode(input.context.focusMode)) {
+    throw new Error("focusMode must be ambient, focused, or combat-safe");
+  }
+
+  return Object.freeze({
+    featureFlagId: PLAYER_SYSTEM_AUDIO_FEATURE_FLAG_ID,
+    focusMode: input.context.focusMode,
+    contract: input.contract,
+    decision: resolveAiSpeechAudioPolicy({
+      contract: input.contract,
+      focusMode: input.context.focusMode,
+      featureFlags: input.context.featureFlags,
+      masterMuted: input.context.masterMuted,
+      userMuted: input.context.userMuted,
+      activeContractIds: input.context.activeContractIds,
+    }),
+  });
+}
+
+const MAX_PLAYER_SYSTEM_VOICE_COMMAND_PANES = 8;
+
+function normalizeVoiceCommandPatterns(
+  patterns: readonly (string | RegExp)[]
+): readonly (string | RegExp)[] {
+  return freezeReadonlyArray(
+    patterns.map((pattern, index) => {
+      if (typeof pattern === "string") {
+        return assertNonEmptyString(pattern, `patterns[${index}]`);
+      }
+      if (pattern instanceof RegExp) {
+        return new RegExp(pattern.source, pattern.flags);
+      }
+      throw new Error(`patterns[${index}] must be a string or regular expression`);
+    })
+  );
+}
+
+function normalizeVoiceCommandPanes(
+  panes: readonly string[] | undefined
+): readonly string[] | undefined {
+  if (panes === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(panes) || panes.length > MAX_PLAYER_SYSTEM_VOICE_COMMAND_PANES) {
+    throw new Error(
+      `focusedPanes must contain at most ${MAX_PLAYER_SYSTEM_VOICE_COMMAND_PANES} entries`
+    );
+  }
+
+  return freezeReadonlyArray(
+    panes.map((pane, index) => assertNonEmptyString(pane, `focusedPanes[${index}]`))
+  );
+}
+
+export function createPlayerSystemVoiceCommandRegistration(
+  input: PlayerSystemVoiceCommandRegistrationInput
+): PlayerSystemVoiceCommandRegistration {
+  if (typeof input.handler !== "function") {
+    throw new Error("handler must be a function");
+  }
+
+  const commandFamily = assertNonEmptyString(input.commandFamily, "commandFamily");
+  const focusedPanes = normalizeVoiceCommandPanes(input.focusedPanes);
+
+  if (input.allowInCombatSafe !== undefined) {
+    assertBoolean(input.allowInCombatSafe, "allowInCombatSafe");
+  }
+
+  return Object.freeze({
+    name: assertNonEmptyString(input.name, "name"),
+    patterns: normalizeVoiceCommandPatterns(input.patterns ?? []),
+    scope: Object.freeze({
+      focusedPanes,
+      commandFamily,
+      allowInCombatSafe: input.allowInCombatSafe ?? false,
+    }),
+    handler: input.handler,
+  });
+}
+
+export function resolvePlayerSystemVoiceCommand(
+  registration: PlayerSystemVoiceCommandRegistration,
+  context: PlayerSystemVoiceCommandContext = {}
+): PlayerSystemVoiceCommandResolution {
+  if (
+    registration.scope.focusedPanes &&
+    (!context.focusedPane ||
+      !registration.scope.focusedPanes.includes(context.focusedPane))
+  ) {
+    return Object.freeze({
+      allowed: false,
+      reason: "focused-pane-required",
+    });
+  }
+
+  if (
+    context.allowedCommandFamilies &&
+    !context.allowedCommandFamilies.includes(registration.scope.commandFamily)
+  ) {
+    return Object.freeze({
+      allowed: false,
+      reason: "command-family-not-allowed",
+    });
+  }
+
+  if (context.combatSafe && !registration.scope.allowInCombatSafe) {
+    return Object.freeze({
+      allowed: false,
+      reason: "combat-safe-restricted",
+    });
+  }
+
+  return Object.freeze({
+    allowed: true,
+    reason: "allowed",
   });
 }
 
