@@ -25,7 +25,9 @@ npm install @plasius/player-system
 - Player System session shape
 - focus and combat-safe state
 - preference-learning signal capture
+- immutable preference-model summaries derived from bounded signal history
 - module orchestration metadata
+- renderer-neutral runtime coordination across ambient and focused module scopes
 - points-store ledger orchestration and bounded proto-social devolution eligibility
 - event-log and achievement read-model contracts
 - timeout, cancellation, and bounded-failure contracts for async coordination
@@ -70,6 +72,8 @@ import {
   createPlayerSystemTrainingInstitutionReadiness,
   createPlayerSystemTrainingRoutingState,
   createPlayerSystemPointsStoreState,
+  createPlayerSystemPreferenceModelState,
+  createPlayerSystemRuntime,
   defaultPlayerSystemRuntimeContract,
   defaultPlayerSystemRuntimePortabilityContract,
   createPlayerSystemSessionState,
@@ -86,6 +90,34 @@ console.log(packageDescriptor.packageName, PLAYER_SYSTEM_FEATURE_FLAG_ID);
 console.log(session.mode);
 console.log(defaultPlayerSystemRuntimeContract.timeoutBudget.transitionMs);
 console.log(defaultPlayerSystemRuntimePortabilityContract.sessionData.allowedSessionFields);
+
+const runtime = createPlayerSystemRuntime({
+  session: {
+    sessionId: "awakening-001",
+    mode: "ambient",
+    combatSafe: true,
+  },
+  modules: [
+    {
+      module: "missions",
+      modes: ["ambient", "focused"],
+      coordinate: ({ session, preferenceModel }) => {
+        console.log(session.sessionId, preferenceModel.dominantKind);
+        return true;
+      },
+    },
+  ],
+});
+
+runtime.recordPreferenceSignal({
+  signalId: "mission-choice-1",
+  kind: "exploration",
+  confidence: 0.8,
+  source: "mission-choice",
+});
+runtime.coordinate();
+runtime.focusModule("missions");
+runtime.coordinate();
 
 const trainingRouting = createPlayerSystemTrainingRoutingState({
   growthFocus: "hybrid",

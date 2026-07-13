@@ -124,6 +124,81 @@ export interface PlayerSystemSessionState {
   readonly preferenceSignals: readonly PlayerPreferenceSignal[];
 }
 
+export interface PlayerSystemPreferenceProfile {
+  readonly kind: PlayerPreferenceSignalKind;
+  readonly signalCount: number;
+  readonly confidence: number;
+}
+
+export interface PlayerSystemPreferenceModelState {
+  readonly signals: readonly PlayerPreferenceSignal[];
+  readonly profiles: readonly PlayerSystemPreferenceProfile[];
+  readonly dominantKind: PlayerPreferenceSignalKind | null;
+}
+
+export interface PlayerSystemModuleContext {
+  readonly session: PlayerSystemSessionState;
+  readonly preferenceModel: PlayerSystemPreferenceModelState;
+  readonly mode: PlayerSystemMode;
+  readonly isFocused: boolean;
+}
+
+export type PlayerSystemModuleCoordinator = (
+  context: PlayerSystemModuleContext
+) => boolean;
+
+export interface PlayerSystemModuleRegistrationInput {
+  readonly module: PlayerSystemModule;
+  readonly modes?: readonly PlayerSystemMode[];
+  readonly coordinate: PlayerSystemModuleCoordinator;
+}
+
+export interface PlayerSystemModuleRegistration
+  extends PlayerSystemModuleRegistrationInput {
+  readonly modes: readonly PlayerSystemMode[];
+}
+
+export interface PlayerSystemModuleCoordination {
+  readonly module: PlayerSystemModule;
+  readonly mode: PlayerSystemMode;
+  readonly isFocused: boolean;
+  readonly handled: boolean;
+}
+
+export interface PlayerSystemRuntimeState {
+  readonly featureFlagId: string;
+  readonly session: PlayerSystemSessionState;
+  readonly preferenceModel: PlayerSystemPreferenceModelState;
+  readonly registeredModules: readonly PlayerSystemModule[];
+}
+
+export interface CreatePlayerSystemRuntimeInput {
+  readonly session: Omit<
+    PlayerSystemSessionState,
+    "activeModule" | "preferenceSignals"
+  > & {
+    readonly activeModule?: PlayerSystemModule | null;
+    readonly preferenceSignals?: readonly PlayerPreferenceSignal[];
+  };
+  readonly modules?: readonly PlayerSystemModuleRegistrationInput[];
+  readonly maxRetainedPreferenceSignals?: number;
+}
+
+export interface PlayerSystemRuntime {
+  readonly getState: () => PlayerSystemRuntimeState;
+  readonly registerModule: (
+    registration: PlayerSystemModuleRegistrationInput
+  ) => void;
+  readonly unregisterModule: (module: PlayerSystemModule) => boolean;
+  readonly setMode: (mode: PlayerSystemMode) => void;
+  readonly focusModule: (module: PlayerSystemModule) => void;
+  readonly clearFocus: () => void;
+  readonly recordPreferenceSignal: (
+    signal: PlayerPreferenceSignal
+  ) => PlayerSystemPreferenceModelState;
+  readonly coordinate: () => readonly PlayerSystemModuleCoordination[];
+}
+
 export const PLAYER_SYSTEM_AUDIO_FEATURE_FLAG_ID =
   "isekai.player-system.audio.enabled" as const;
 
@@ -644,6 +719,8 @@ export const PLAYER_SYSTEM_ENV_PREFIX = "PLAYER_SYSTEM";
 export const PLAYER_SYSTEM_PACKAGES_FEATURE_FLAG_ID =
   "isekai.player-system.packages.enabled";
 export const PLAYER_SYSTEM_FEATURE_FLAG_ID = PLAYER_SYSTEM_PACKAGES_FEATURE_FLAG_ID;
+export const PLAYER_SYSTEM_CORE_FEATURE_FLAG_ID =
+  "isekai.player-system.core.enabled";
 export const PLAYER_SYSTEM_RUNTIME_NFR_FEATURE_FLAG_ID =
   "isekai.player-system.runtime-nfr.enabled";
 export const PLAYER_SYSTEM_RUNTIME_PORTABILITY_FEATURE_FLAG_ID =
@@ -835,6 +912,18 @@ export function isPlayerSystemModule(value: string): value is PlayerSystemModule
     value === "mcc" ||
     value === "tutorial" ||
     value === "points-store"
+  );
+}
+
+export function isPlayerPreferenceSignalKind(
+  value: string
+): value is PlayerPreferenceSignalKind {
+  return (
+    value === "combat" ||
+    value === "exploration" ||
+    value === "crafting" ||
+    value === "social" ||
+    value === "governance"
   );
 }
 
@@ -1250,6 +1339,276 @@ export function createPlayerSystemSessionState(
     combatSafe: input.combatSafe,
     activeModule: input.activeModule ?? null,
     preferenceSignals,
+  });
+}
+
+export function createPlayerSystemPreferenceModelState(
+  signals: readonly PlayerPreferenceSignal[] = []
+): PlayerSystemPreferenceModelState {
+  const normalizedSignals = signals.map((signal) => {
+    assertPreferenceSignal(signal);
+    return Object.freeze({ ...signal });
+  });
+  const profileStats = new Map<
+    PlayerPreferenceSignalKind,
+    { count: number; confidenceTotal: number }
+  >();
+
+  for (const signal of normalizedSignals) {
+    const current = profileStats.get(signal.kind) ?? {
+      count: 0,
+      confidenceTotal: 0,
+    };
+    current.count += 1;
+    current.confidenceTotal += signal.confidence;
+    profileStats.set(signal.kind, current);
+  }
+
+  const profiles = Array.from(profileStats.entries()).map(
+    ([kind, stats]) =>
+      Object.freeze({
+        kind,
+        signalCount: stats.count,
+        confidence: stats.confidenceTotal / stats.count,
+      })
+  );
+  const dominantProfile = profiles.reduce<
+    PlayerSystemPreferenceProfile | undefined
+  >((current, profile) => {
+    if (!current) {
+      return profile;
+    }
+
+    if (
+      profile.confidence * profile.signalCount >
+        current.confidence * current.signalCount ||
+      (profile.confidence * profile.signalCount ===
+        current.confidence * current.signalCount &&
+        profile.signalCount > current.signalCount)
+    ) {
+      return profile;
+    }
+
+    return current;
+  }, undefined);
+
+  return Object.freeze({
+    signals: Object.freeze(normalizedSignals),
+    profiles: Object.freeze(profiles),
+    dominantKind: dominantProfile?.kind ?? null,
+  });
+}
+
+export function createPlayerSystemRuntime(
+  input: CreatePlayerSystemRuntimeInput
+): PlayerSystemRuntime {
+  const maxRetainedPreferenceSignals =
+    input.maxRetainedPreferenceSignals ??
+    defaultPlayerSystemRuntimePortabilityContract.sessionData
+      .maxRetainedPreferenceSignals;
+  if (
+    !Number.isInteger(maxRetainedPreferenceSignals) ||
+    maxRetainedPreferenceSignals < 1
+  ) {
+    throw new Error("maxRetainedPreferenceSignals must be a positive integer");
+  }
+
+  let registrations = (input.modules ?? []).map(normalizeModuleRegistration);
+  assertUniqueModuleRegistrations(registrations);
+  let session = createPlayerSystemSessionState(input.session);
+  let preferenceModel = createPlayerSystemPreferenceModelState(
+    session.preferenceSignals
+  );
+  let state = createPlayerSystemRuntimeState(
+    session,
+    preferenceModel,
+    registrations
+  );
+
+  const refreshState = (): void => {
+    state = createPlayerSystemRuntimeState(
+      session,
+      preferenceModel,
+      registrations
+    );
+  };
+
+  const setSession = (
+    mode: PlayerSystemMode,
+    activeModule: PlayerSystemModule | null
+  ): void => {
+    session = createPlayerSystemSessionState({
+      ...session,
+      mode,
+      activeModule,
+    });
+    refreshState();
+  };
+
+  return Object.freeze({
+    getState: (): PlayerSystemRuntimeState => state,
+    registerModule: (registration: PlayerSystemModuleRegistrationInput): void => {
+      const normalized = normalizeModuleRegistration(registration);
+      if (registrations.some(({ module }) => module === normalized.module)) {
+        throw new Error(`module ${normalized.module} is already registered`);
+      }
+
+      registrations = [...registrations, normalized];
+      refreshState();
+    },
+    unregisterModule: (module: PlayerSystemModule): boolean => {
+      const nextRegistrations = registrations.filter(
+        (registration) => registration.module !== module
+      );
+      if (nextRegistrations.length === registrations.length) {
+        return false;
+      }
+
+      registrations = nextRegistrations;
+      if (session.activeModule === module) {
+        setSession("ambient", null);
+      } else {
+        refreshState();
+      }
+      return true;
+    },
+    setMode: (mode: PlayerSystemMode): void => {
+      assertPlayerSystemMode(mode);
+      setSession(mode, mode === "focused" ? session.activeModule : null);
+    },
+    focusModule: (module: PlayerSystemModule): void => {
+      assertPlayerSystemModule(module);
+      if (!registrations.some((registration) => registration.module === module)) {
+        throw new Error(`cannot focus an unregistered module: ${module}`);
+      }
+
+      setSession("focused", module);
+    },
+    clearFocus: (): void => {
+      setSession("ambient", null);
+    },
+    recordPreferenceSignal: (
+      signal: PlayerPreferenceSignal
+    ): PlayerSystemPreferenceModelState => {
+      assertPreferenceSignal(signal);
+      const preferenceSignals = [
+        ...session.preferenceSignals,
+        Object.freeze({ ...signal }),
+      ].slice(-maxRetainedPreferenceSignals);
+      session = createPlayerSystemSessionState({
+        ...session,
+        preferenceSignals,
+      });
+      preferenceModel = createPlayerSystemPreferenceModelState(preferenceSignals);
+      refreshState();
+      return preferenceModel;
+    },
+    coordinate: (): readonly PlayerSystemModuleCoordination[] => {
+      const coordination = registrations
+        .filter((registration) => {
+          if (!registration.modes.includes(session.mode)) {
+            return false;
+          }
+
+          return (
+            session.mode === "ambient" ||
+            registration.module === session.activeModule
+          );
+        })
+        .map((registration) => {
+          const isFocused = session.mode === "focused";
+          const handled = registration.coordinate({
+            session,
+            preferenceModel,
+            mode: session.mode,
+            isFocused,
+          });
+          return Object.freeze({
+            module: registration.module,
+            mode: session.mode,
+            isFocused,
+            handled,
+          });
+        });
+
+      return Object.freeze(coordination);
+    },
+  });
+}
+
+function assertPreferenceSignal(signal: PlayerPreferenceSignal): void {
+  assertNonEmptyString(signal.signalId, "signalId");
+  if (!isPlayerPreferenceSignalKind(signal.kind)) {
+    throw new Error("kind must be a supported preference signal kind");
+  }
+  if (
+    typeof signal.confidence !== "number" ||
+    !Number.isFinite(signal.confidence) ||
+    signal.confidence < 0 ||
+    signal.confidence > 1
+  ) {
+    throw new Error("confidence must be between 0 and 1");
+  }
+  assertNonEmptyString(signal.source, "source");
+}
+
+function assertPlayerSystemMode(value: unknown): asserts value is PlayerSystemMode {
+  if (typeof value !== "string" || !isPlayerSystemMode(value)) {
+    throw new Error("mode must be ambient or focused");
+  }
+}
+
+function assertPlayerSystemModule(
+  value: unknown
+): asserts value is PlayerSystemModule {
+  if (typeof value !== "string" || !isPlayerSystemModule(value)) {
+    throw new Error("module must be a supported Player System module");
+  }
+}
+
+function normalizeModuleRegistration(
+  registration: PlayerSystemModuleRegistrationInput
+): PlayerSystemModuleRegistration {
+  assertPlayerSystemModule(registration.module);
+  if (typeof registration.coordinate !== "function") {
+    throw new Error("coordinate must be a function");
+  }
+
+  const modes = registration.modes ?? ["ambient", "focused"];
+  if (modes.length === 0 || modes.some((mode) => !isPlayerSystemMode(mode))) {
+    throw new Error("modes must contain at least one supported Player System mode");
+  }
+  if (new Set(modes).size !== modes.length) {
+    throw new Error("modes must not contain duplicates");
+  }
+
+  return Object.freeze({
+    module: registration.module,
+    modes: Object.freeze([...modes]),
+    coordinate: registration.coordinate,
+  });
+}
+
+function assertUniqueModuleRegistrations(
+  registrations: readonly PlayerSystemModuleRegistration[]
+): void {
+  if (new Set(registrations.map(({ module }) => module)).size !== registrations.length) {
+    throw new Error("module registrations must be unique");
+  }
+}
+
+function createPlayerSystemRuntimeState(
+  session: PlayerSystemSessionState,
+  preferenceModel: PlayerSystemPreferenceModelState,
+  registrations: readonly PlayerSystemModuleRegistration[]
+): PlayerSystemRuntimeState {
+  return Object.freeze({
+    featureFlagId: PLAYER_SYSTEM_CORE_FEATURE_FLAG_ID,
+    session,
+    preferenceModel,
+    registeredModules: Object.freeze(
+      registrations.map((registration) => registration.module)
+    ),
   });
 }
 

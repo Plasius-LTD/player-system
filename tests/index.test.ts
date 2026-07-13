@@ -18,6 +18,8 @@ import {
   createPlayerSystemTrainingInstitutionReadiness,
   createPlayerSystemTrainingRoutingState,
   createPlayerSystemPointsStoreState,
+  createPlayerSystemPreferenceModelState,
+  createPlayerSystemRuntime,
   createPlayerSystemSessionState,
   createPlayerSystemRuntimeContract,
   createPlayerSystemRuntimePortabilityContract,
@@ -80,6 +82,108 @@ describe("@plasius/player-system", () => {
     expect(state.preferenceSignals).toHaveLength(1);
     expect(Object.isFrozen(state.preferenceSignals)).toBe(true);
     expect(Object.isFrozen(state.preferenceSignals[0])).toBe(true);
+  });
+
+  it("aggregates an immutable preference model from bounded signal history", () => {
+    const model = createPlayerSystemPreferenceModelState([
+      {
+        signalId: "combat-1",
+        kind: "combat",
+        confidence: 0.8,
+        source: "battle-log",
+      },
+      {
+        signalId: "combat-2",
+        kind: "combat",
+        confidence: 0.6,
+        source: "battle-log",
+      },
+      {
+        signalId: "explore-1",
+        kind: "exploration",
+        confidence: 0.9,
+        source: "world-map",
+      },
+    ]);
+
+    expect(model.dominantKind).toBe("combat");
+    expect(model.profiles).toEqual([
+      { kind: "combat", signalCount: 2, confidence: 0.7 },
+      { kind: "exploration", signalCount: 1, confidence: 0.9 },
+    ]);
+    expect(Object.isFrozen(model)).toBe(true);
+    expect(Object.isFrozen(model.signals)).toBe(true);
+    expect(Object.isFrozen(model.profiles)).toBe(true);
+    expect(() =>
+      createPlayerSystemPreferenceModelState([
+        {
+          signalId: "invalid",
+          kind: "combat",
+          confidence: 1.1,
+          source: "test",
+        },
+      ])
+    ).toThrow("confidence must be between 0 and 1");
+  });
+
+  it("coordinates registered child modules within ambient and focused boundaries", () => {
+    const calls: string[] = [];
+    const runtime = createPlayerSystemRuntime({
+      session: {
+        sessionId: "session-1",
+        mode: "ambient",
+        combatSafe: true,
+      },
+      modules: [
+        {
+          module: "missions",
+          modes: ["ambient", "focused"],
+          coordinate: ({ mode, isFocused }) => {
+            calls.push(`missions:${mode}:${isFocused}`);
+            return true;
+          },
+        },
+        {
+          module: "mcc",
+          modes: ["focused"],
+          coordinate: ({ mode, isFocused }) => {
+            calls.push(`mcc:${mode}:${isFocused}`);
+            return true;
+          },
+        },
+      ],
+    });
+
+    expect(runtime.coordinate()).toEqual([
+      { module: "missions", mode: "ambient", isFocused: false, handled: true },
+    ]);
+
+    runtime.focusModule("mcc");
+    expect(runtime.coordinate()).toEqual([
+      { module: "mcc", mode: "focused", isFocused: true, handled: true },
+    ]);
+    expect(runtime.getState().session.activeModule).toBe("mcc");
+
+    runtime.recordPreferenceSignal({
+      signalId: "mission-1",
+      kind: "exploration",
+      confidence: 0.75,
+      source: "mission-choice",
+    });
+    expect(runtime.getState().preferenceModel.dominantKind).toBe("exploration");
+
+    runtime.clearFocus();
+    expect(runtime.coordinate()).toEqual([
+      { module: "missions", mode: "ambient", isFocused: false, handled: true },
+    ]);
+    expect(calls).toEqual([
+      "missions:ambient:false",
+      "mcc:focused:true",
+      "missions:ambient:false",
+    ]);
+    expect(() => runtime.focusModule("tutorial")).toThrow(
+      "cannot focus an unregistered module"
+    );
   });
 
   it("routes narrated responses through the shared audio policy", () => {

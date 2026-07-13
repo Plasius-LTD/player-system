@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 - **Added**
-  - (placeholder)
+  - Added core Player System runtime coordination with immutable preference-model summaries and ambient/focused child-module boundaries behind `isekai.player-system.core.enabled`.
 
 - **Changed**
   - (placeholder)
