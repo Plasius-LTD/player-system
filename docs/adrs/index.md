@@ -5,3 +5,4 @@
 - [ADR-0003: Protected-main releases use release-prep PRs and reconciled version state](./adr-0003-protected-main-release-preparation-and-version-reconciliation.md)
 - [ADR-0004: Player System Governance Runtime Boundary](./adr-0004-player-system-governance-runtime-boundary.md)
 - [ADR-0005: Player System Audio and Voice Orchestration Boundary](./adr-0005-player-system-audio-and-voice-orchestration-boundary.md)
+- [ADR-0006: Core Runtime Session and Module Orchestration](./adr-0006-core-runtime-session-orchestration.md)
