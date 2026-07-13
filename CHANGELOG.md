@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 - **Added**
+  - (placeholder)
+
+- **Changed**
+  - (placeholder)
+
+- **Fixed**
+  - (placeholder)
+
+- **Security**
+  - (placeholder)
+
+## [0.1.11] - 2026-07-13
+
+- **Added**
   - Added core Player System runtime coordination with immutable preference-model summaries and ambient/focused child-module boundaries behind `isekai.player-system.core.enabled`.
 
 - **Changed**
@@ -89,3 +103,4 @@ All notable changes to this project will be documented in this file.
 [0.1.8]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.8
 [0.1.9]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.9
 [0.1.10]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.10
+[0.1.11]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.11
