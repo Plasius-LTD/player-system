@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 - **Added**
-  - (placeholder)
+  - Added feature-flagged adaptive mission generation, immutable lifecycle transitions, confidence-scored player-model signals, and governance-gated bounded reward outcomes under `isekai.player-system.missions.enabled`.
 
 - **Changed**
   - (placeholder)

@@ -4,16 +4,22 @@ import {
   PLAYER_SYSTEM_PACKAGES_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_GOVERNANCE_FEATURE_FLAG_ID,
+  PLAYER_SYSTEM_MISSIONS_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_RUNTIME_NFR_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_RUNTIME_PORTABILITY_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_TRAINING_ROUTING_FEATURE_FLAG_ID,
   assessPlayerSystemRuntimePortability,
   createPlayerSystemGovernanceContract,
   createPlayerSystemGovernanceRuntimeState,
+  createPlayerSystemMission,
   createPlayerSystemOverdriveState,
   createPlayerSystemRepairTaxAssessment,
   evaluatePlayerSystemGovernanceSignals,
   evaluatePlayerSystemRewardPreflight,
+  evaluatePlayerSystemMissionReward,
+  generatePlayerSystemMission,
+  applyPlayerSystemMissionTransition,
+  transitionPlayerSystemMission,
   createPlayerSystemTrainingAuthorityHandoff,
   createPlayerSystemTrainingInstitutionReadiness,
   createPlayerSystemTrainingRoutingState,
@@ -184,6 +190,347 @@ describe("@plasius/player-system", () => {
     expect(() => runtime.focusModule("tutorial")).toThrow(
       "cannot focus an unregistered module"
     );
+  });
+
+  it("generates conservative bootstrap missions and fails closed when disabled", () => {
+    const bootstrap = {
+      missionId: "mission-bootstrap-survival",
+      title: "Find a safe place to rest",
+      summary: "Survey the nearby clearing before nightfall.",
+      preferenceKind: "exploration" as const,
+      horizon: "short-term" as const,
+      minimumReadiness: 0,
+    };
+
+    const bootstrapResult = generatePlayerSystemMission({
+      featureFlagEnabled: true,
+      readiness: 0.1,
+      preferenceModel: createPlayerSystemPreferenceModelState([]),
+      mccFocusTarget: null,
+      nearbyOpportunities: [],
+      worldStatePressures: [],
+      bootstrap,
+      candidates: [
+        {
+          missionId: "mission-combat-drill",
+          title: "Practice a guarded strike",
+          summary: "Build a safe combat baseline.",
+          preferenceKind: "combat",
+          horizon: "short-term",
+          minimumReadiness: 0.5,
+        },
+      ],
+    });
+
+    expect(bootstrapResult.featureFlagId).toBe(
+      PLAYER_SYSTEM_MISSIONS_FEATURE_FLAG_ID
+    );
+    expect(bootstrapResult.phase).toBe("bootstrap");
+    expect(bootstrapResult.fallbackUsed).toBe(true);
+    expect(bootstrapResult.proposal?.missionId).toBe(
+      "mission-bootstrap-survival"
+    );
+    expect(bootstrapResult.proposal?.state).toBe("proposed");
+
+    const disabledResult = generatePlayerSystemMission({
+      featureFlagEnabled: false,
+      readiness: 1,
+      preferenceModel: createPlayerSystemPreferenceModelState([]),
+      nearbyOpportunities: [],
+      worldStatePressures: [],
+      bootstrap,
+      candidates: [],
+    });
+
+    expect(disabledResult.phase).toBe("disabled");
+    expect(disabledResult.proposal).toBeNull();
+    expect(disabledResult.rationale).toContain(
+      "Mission rollout is disabled by the feature flag."
+    );
+  });
+
+  it("selects adaptive missions from preference, MCC, opportunity, and pressure inputs", () => {
+    const adaptive = generatePlayerSystemMission({
+      featureFlagEnabled: true,
+      readiness: 0.8,
+      preferenceModel: createPlayerSystemPreferenceModelState([
+        { signalId: "combat-1", kind: "combat", confidence: 0.9, source: "test" },
+        { signalId: "combat-2", kind: "combat", confidence: 0.8, source: "test" },
+        { signalId: "combat-3", kind: "combat", confidence: 0.85, source: "test" },
+      ]),
+      mccFocusTarget: "combat",
+      nearbyOpportunities: [{ opportunityId: "training-yard", kind: "combat" }],
+      worldStatePressures: [
+        { kind: "combat", intensity: 0.8, summary: "A nearby threat is escalating." },
+      ],
+      bootstrap: {
+        missionId: "mission-bootstrap",
+        title: "Survey the clearing",
+        summary: "Find a safe place to learn.",
+        preferenceKind: "exploration",
+        horizon: "short-term",
+        minimumReadiness: 0,
+      },
+      candidates: [
+        {
+          missionId: "mission-combat-drill",
+          title: "Practice a guarded strike",
+          summary: "Build a safe combat baseline.",
+          preferenceKind: "combat",
+          horizon: "short-term",
+          minimumReadiness: 0.5,
+          opportunityId: "training-yard",
+          pressureKind: "combat",
+        },
+        {
+          missionId: "mission-crafting-gather",
+          title: "Gather useful fibers",
+          summary: "Explore a nearby crafting opportunity.",
+          preferenceKind: "crafting",
+          horizon: "medium-term",
+          minimumReadiness: 0.1,
+        },
+      ],
+    });
+
+    expect(adaptive.phase).toBe("adaptive");
+    expect(adaptive.fallbackUsed).toBe(false);
+    expect(adaptive.stablePreference).toBe(true);
+    expect(adaptive.proposal?.missionId).toBe("mission-combat-drill");
+    expect(adaptive.rationale).toEqual(
+      expect.arrayContaining([
+        "Stable combat preference evidence is available.",
+        "MCC focus target matches the selected mission.",
+        "A nearby opportunity matches the selected mission.",
+        "World-state pressure matches the selected mission.",
+      ])
+    );
+  });
+
+  it("feeds mission decisions into the runtime preference model and enforces lifecycle boundaries", () => {
+    const runtime = createPlayerSystemRuntime({
+      session: { sessionId: "mission-session", mode: "ambient", combatSafe: true },
+    });
+    let mission = createPlayerSystemMission({
+      proposal: {
+        featureFlagId: PLAYER_SYSTEM_MISSIONS_FEATURE_FLAG_ID,
+        missionId: "mission-lifecycle",
+        title: "Complete the first survey",
+        summary: "Learn what the nearby area can safely offer.",
+        preferenceKind: "exploration",
+        horizon: "short-term",
+        minimumReadiness: 0,
+        state: "proposed",
+        phase: "bootstrap",
+        rationale: ["bootstrap fallback"],
+      },
+      now: "2026-07-15T00:00:00.000Z",
+    });
+
+    const accepted = applyPlayerSystemMissionTransition(runtime, mission, {
+      action: "accept",
+      at: "2026-07-15T00:00:01.000Z",
+    });
+    mission = accepted.mission;
+    expect(mission.state).toBe("accepted");
+    expect(accepted.learningSignal?.decision).toBe("accepted");
+    expect(runtime.getState().preferenceModel.dominantKind).toBe("exploration");
+
+    mission = transitionPlayerSystemMission(mission, {
+      action: "activate",
+      at: "2026-07-15T00:00:02.000Z",
+    }).mission;
+    mission = applyPlayerSystemMissionTransition(runtime, mission, {
+      action: "pin",
+      at: "2026-07-15T00:00:03.000Z",
+    }).mission;
+    mission = transitionPlayerSystemMission(mission, {
+      action: "begin-completion",
+      at: "2026-07-15T00:00:04.000Z",
+    }).mission;
+    mission = applyPlayerSystemMissionTransition(runtime, mission, {
+      action: "complete",
+      at: "2026-07-15T00:00:05.000Z",
+    }).mission;
+
+    expect(mission.state).toBe("completed");
+    expect(mission.learningSignals.map((signal) => signal.decision)).toEqual([
+      "accepted",
+      "pinned",
+      "completed",
+    ]);
+    expect(() =>
+      transitionPlayerSystemMission(mission, {
+        action: "activate",
+        at: "2026-07-15T00:00:06.000Z",
+      })
+    ).toThrow("cannot transition mission from completed with activate");
+  });
+
+  it("supports refusal, abandonment, failure, and cooldown terminal paths", () => {
+    const proposal = {
+      featureFlagId: PLAYER_SYSTEM_MISSIONS_FEATURE_FLAG_ID,
+      missionId: "mission-cooldown",
+      title: "Test lifecycle path",
+      summary: "Exercise refusal and cooldown behavior.",
+      preferenceKind: "governance" as const,
+      horizon: "medium-term" as const,
+      minimumReadiness: 0,
+      state: "proposed" as const,
+      phase: "bootstrap" as const,
+      rationale: ["test"],
+    };
+    const refused = transitionPlayerSystemMission(
+      createPlayerSystemMission({ proposal, now: "2026-07-15T00:00:00.000Z" }),
+      { action: "decline", at: "2026-07-15T00:00:01.000Z" }
+    ).mission;
+    expect(refused.state).toBe("refused");
+    expect(refused.learningSignals[0]?.decision).toBe("declined");
+
+    const abandoned = transitionPlayerSystemMission(
+      transitionPlayerSystemMission(
+        createPlayerSystemMission({ proposal }),
+        { action: "accept" }
+      ).mission,
+      { action: "activate" }
+    );
+    const abandonedResult = transitionPlayerSystemMission(abandoned.mission, {
+      action: "abandon",
+    });
+    expect(abandonedResult.mission.state).toBe("abandoned");
+    expect(abandonedResult.learningSignal?.decision).toBe("abandoned");
+
+    const failed = transitionPlayerSystemMission(
+      transitionPlayerSystemMission(
+        createPlayerSystemMission({ proposal }),
+        { action: "accept" }
+      ).mission,
+      { action: "activate" }
+    );
+    const failedResult = transitionPlayerSystemMission(failed.mission, {
+      action: "fail",
+    });
+    expect(failedResult.mission.state).toBe("failed");
+    expect(failedResult.learningSignal?.decision).toBe("failed");
+
+    const cooldown = transitionPlayerSystemMission(refused, {
+      action: "cooldown",
+      at: "2026-07-15T00:00:02.000Z",
+      cooldownMs: 60000,
+    }).mission;
+    expect(cooldown.state).toBe("cooldown");
+    expect(cooldown.cooldownUntil).toBe("2026-07-15T00:01:02.000Z");
+    expect(() =>
+      transitionPlayerSystemMission(cooldown, {
+        action: "accept",
+        at: "2026-07-15T00:00:03.000Z",
+      })
+    ).toThrow("cannot transition mission from cooldown with accept");
+  });
+
+  it("consumes reward preflight before surfacing approved, modified, or rejected outcomes", () => {
+    const modified = evaluatePlayerSystemMissionReward({
+      rewardType: "guidance-credit",
+      requestedAmount: 5,
+      unit: "credits",
+      explanation: "Grant a bounded learning credit.",
+      preflight: {
+        rewardSource: "mission",
+        rewardType: "guidance-credit",
+        globalCap: 10,
+        sessionCap: 4,
+        grantedGlobal: 4,
+        grantedSession: 2,
+        readiness: "ready",
+      },
+      metadata: { missionClass: "short-term" },
+    });
+    expect(modified.outcome).toBe("modified");
+    expect(modified.grantedAmount).toBe(2);
+    expect(modified.explanation).toContain("modified");
+    expect(modified.metadata).toMatchObject({
+      missionClass: "short-term",
+      preflightStatus: "allowed",
+    });
+
+    const approved = evaluatePlayerSystemMissionReward({
+      rewardType: "route-annotation",
+      requestedAmount: 1,
+      unit: "annotations",
+      explanation: "Grant one route annotation.",
+      preflight: {
+        rewardSource: "mission",
+        rewardType: "route-annotation",
+        globalCap: 10,
+        sessionCap: 4,
+        grantedGlobal: 1,
+        grantedSession: 1,
+        readiness: "ready",
+      },
+    });
+    expect(approved.outcome).toBe("approved");
+    expect(approved.grantedAmount).toBe(1);
+
+    const rejected = evaluatePlayerSystemMissionReward({
+      rewardType: "trust-surplus",
+      requestedAmount: 1,
+      unit: "trust",
+      explanation: "Grant a trust surplus.",
+      preflight: {
+        rewardSource: "mission",
+        rewardType: "trust-surplus",
+        globalCap: 5,
+        sessionCap: 2,
+        grantedGlobal: 0,
+        grantedSession: 0,
+        readiness: "blocked",
+        policyAllowed: false,
+        policyReason: "Institutional gate is not satisfied.",
+      },
+    });
+    expect(rejected.outcome).toBe("rejected");
+    expect(rejected.grantedAmount).toBe(0);
+    expect(rejected.explanation).toContain("Institutional gate is not satisfied.");
+    expect(Object.isFrozen(rejected.metadata)).toBe(true);
+
+    let mission = createPlayerSystemMission({
+      proposal: {
+        featureFlagId: PLAYER_SYSTEM_MISSIONS_FEATURE_FLAG_ID,
+        missionId: "mission-reward",
+        title: "Reward test",
+        summary: "Complete the reward path.",
+        preferenceKind: "crafting",
+        horizon: "short-term",
+        minimumReadiness: 0,
+        state: "proposed",
+        phase: "bootstrap",
+        rationale: ["test"],
+      },
+    });
+    mission = transitionPlayerSystemMission(mission, { action: "accept" }).mission;
+    mission = transitionPlayerSystemMission(mission, { action: "activate" }).mission;
+    mission = transitionPlayerSystemMission(mission, { action: "begin-completion" }).mission;
+    mission = transitionPlayerSystemMission(mission, { action: "complete" }).mission;
+    mission = transitionPlayerSystemMission(mission, {
+      action: "surface-reward",
+      rewardDecision: modified,
+    }).mission;
+    expect(mission.state).toBe("rewarding");
+    expect(mission.rewardDecision?.outcome).toBe("modified");
+    expect(() =>
+      transitionPlayerSystemMission(
+        createPlayerSystemMission({
+          proposal: {
+            ...mission,
+            minimumReadiness: 0,
+            state: "proposed",
+            phase: "bootstrap",
+            rationale: ["test"],
+          },
+        }),
+        { action: "surface-reward", rewardDecision: rejected }
+      )
+    ).toThrow("cannot surface a rejected mission reward");
   });
 
   it("routes narrated responses through the shared audio policy", () => {

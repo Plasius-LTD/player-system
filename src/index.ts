@@ -714,6 +714,190 @@ export interface PlayerSystemGovernanceRuntimeStateInput {
   readonly evaluationSummary?: PlayerSystemGovernanceEvaluationSummary;
 }
 
+export const PLAYER_SYSTEM_MISSIONS_FEATURE_FLAG_ID =
+  "isekai.player-system.missions.enabled" as const;
+
+export const PLAYER_SYSTEM_MISSION_STABLE_PREFERENCE_CONFIDENCE = 0.65;
+export const PLAYER_SYSTEM_MISSION_STABLE_PREFERENCE_SIGNAL_COUNT = 3;
+
+export type PlayerSystemMissionHorizon =
+  | "short-term"
+  | "medium-term"
+  | "long-horizon";
+
+export type PlayerSystemMissionGenerationPhase =
+  | "disabled"
+  | "bootstrap"
+  | "adaptive";
+
+export type PlayerSystemMissionLifecycleState =
+  | "proposed"
+  | "accepted"
+  | "active"
+  | "refused"
+  | "abandoned"
+  | "completing"
+  | "completed"
+  | "failed"
+  | "rewarding"
+  | "cooldown";
+
+export type PlayerSystemMissionTransitionAction =
+  | "accept"
+  | "activate"
+  | "refuse"
+  | "decline"
+  | "ignore"
+  | "pin"
+  | "begin-completion"
+  | "complete"
+  | "fail"
+  | "abandon"
+  | "surface-reward"
+  | "cooldown";
+
+export type PlayerSystemMissionLearningDecision =
+  | "accepted"
+  | "refused"
+  | "declined"
+  | "ignored"
+  | "pinned"
+  | "completed"
+  | "failed"
+  | "abandoned";
+
+export interface PlayerSystemMissionOpportunity {
+  readonly opportunityId: string;
+  readonly kind: PlayerPreferenceSignalKind;
+}
+
+export interface PlayerSystemMissionWorldStatePressure {
+  readonly kind: PlayerPreferenceSignalKind;
+  readonly intensity: number;
+  readonly summary: string;
+}
+
+export interface PlayerSystemMissionCandidate {
+  readonly missionId: string;
+  readonly title: string;
+  readonly summary: string;
+  readonly preferenceKind: PlayerPreferenceSignalKind;
+  readonly horizon: PlayerSystemMissionHorizon;
+  readonly minimumReadiness: number;
+  readonly opportunityId?: string | null;
+  readonly pressureKind?: PlayerPreferenceSignalKind | null;
+}
+
+export interface PlayerSystemMissionGenerationInput {
+  readonly featureFlagEnabled: boolean;
+  readonly readiness: number;
+  readonly preferenceModel: PlayerSystemPreferenceModelState;
+  readonly mccFocusTarget?: PlayerPreferenceSignalKind | null;
+  readonly nearbyOpportunities: readonly PlayerSystemMissionOpportunity[];
+  readonly worldStatePressures: readonly PlayerSystemMissionWorldStatePressure[];
+  readonly bootstrap: PlayerSystemMissionCandidate;
+  readonly candidates: readonly PlayerSystemMissionCandidate[];
+}
+
+export interface PlayerSystemMissionProposal extends PlayerSystemMissionCandidate {
+  readonly featureFlagId: typeof PLAYER_SYSTEM_MISSIONS_FEATURE_FLAG_ID;
+  readonly state: "proposed";
+  readonly phase: Exclude<PlayerSystemMissionGenerationPhase, "disabled">;
+  readonly rationale: readonly string[];
+}
+
+export interface PlayerSystemMissionGenerationResult {
+  readonly featureFlagId: typeof PLAYER_SYSTEM_MISSIONS_FEATURE_FLAG_ID;
+  readonly enabled: boolean;
+  readonly phase: PlayerSystemMissionGenerationPhase;
+  readonly stablePreference: boolean;
+  readonly fallbackUsed: boolean;
+  readonly proposal: PlayerSystemMissionProposal | null;
+  readonly rationale: readonly string[];
+}
+
+export interface PlayerSystemMissionLearningSignal extends PlayerPreferenceSignal {
+  readonly missionId: string;
+  readonly decision: PlayerSystemMissionLearningDecision;
+  readonly missionState: PlayerSystemMissionLifecycleState;
+}
+
+export type PlayerSystemMissionRewardOutcome =
+  | "approved"
+  | "modified"
+  | "rejected";
+
+export interface PlayerSystemMissionRewardInput {
+  readonly rewardType: PlayerSystemGovernanceRewardKind;
+  readonly requestedAmount: number;
+  readonly unit: string;
+  readonly explanation: string;
+  readonly preflight: PlayerSystemGovernanceRewardPreflightInput;
+  readonly contract?: PlayerSystemGovernanceContract;
+  readonly metadata?: Readonly<Record<string, unknown>>;
+}
+
+export interface PlayerSystemMissionRewardDecision {
+  readonly outcome: PlayerSystemMissionRewardOutcome;
+  readonly rewardType: PlayerSystemGovernanceRewardKind;
+  readonly requestedAmount: number;
+  readonly grantedAmount: number;
+  readonly unit: string;
+  readonly explanation: string;
+  readonly preflight: PlayerSystemGovernanceRewardPreflightResult;
+  readonly metadata: Readonly<Record<string, unknown>>;
+}
+
+export interface PlayerSystemMission {
+  readonly featureFlagId: typeof PLAYER_SYSTEM_MISSIONS_FEATURE_FLAG_ID;
+  readonly missionId: string;
+  readonly title: string;
+  readonly summary: string;
+  readonly preferenceKind: PlayerPreferenceSignalKind;
+  readonly horizon: PlayerSystemMissionHorizon;
+  readonly state: PlayerSystemMissionLifecycleState;
+  readonly phase: Exclude<PlayerSystemMissionGenerationPhase, "disabled">;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly pinned: boolean;
+  readonly cooldownUntil: string | null;
+  readonly rationale: readonly string[];
+  readonly transitions: readonly PlayerSystemMissionTransition[];
+  readonly learningSignals: readonly PlayerSystemMissionLearningSignal[];
+  readonly rewardDecision: PlayerSystemMissionRewardDecision | null;
+}
+
+export interface PlayerSystemMissionTransition {
+  readonly action: PlayerSystemMissionTransitionAction;
+  readonly from: PlayerSystemMissionLifecycleState;
+  readonly to: PlayerSystemMissionLifecycleState;
+  readonly at: string;
+}
+
+export interface CreatePlayerSystemMissionInput {
+  readonly proposal: PlayerSystemMissionProposal;
+  readonly now?: string;
+}
+
+export interface PlayerSystemMissionTransitionInput {
+  readonly action: PlayerSystemMissionTransitionAction;
+  readonly at?: string;
+  readonly confidence?: number;
+  readonly source?: string;
+  readonly cooldownMs?: number;
+  readonly rewardDecision?: PlayerSystemMissionRewardDecision;
+}
+
+export interface PlayerSystemMissionTransitionResult {
+  readonly mission: PlayerSystemMission;
+  readonly learningSignal: PlayerSystemMissionLearningSignal | null;
+}
+
+export interface PlayerSystemMissionRuntimeTransitionResult
+  extends PlayerSystemMissionTransitionResult {
+  readonly preferenceModel: PlayerSystemPreferenceModelState;
+}
+
 export const PLAYER_SYSTEM_PACKAGE = "@plasius/player-system";
 export const PLAYER_SYSTEM_ENV_PREFIX = "PLAYER_SYSTEM";
 export const PLAYER_SYSTEM_PACKAGES_FEATURE_FLAG_ID =
@@ -1536,6 +1720,286 @@ export function createPlayerSystemRuntime(
   });
 }
 
+export function generatePlayerSystemMission(
+  input: PlayerSystemMissionGenerationInput
+): PlayerSystemMissionGenerationResult {
+  assertBoolean(input.featureFlagEnabled, "featureFlagEnabled");
+  const readiness = assertBoundedUnitInterval(input.readiness, "readiness");
+  const nearbyOpportunities = input.nearbyOpportunities.map(
+    normalizeMissionOpportunity
+  );
+  const worldStatePressures = input.worldStatePressures.map(
+    normalizeMissionWorldStatePressure
+  );
+  const bootstrap = normalizeMissionCandidate(input.bootstrap, "bootstrap");
+  const candidates = input.candidates.map((candidate, index) =>
+    normalizeMissionCandidate(candidate, `candidates[${index}]`)
+  );
+  const dominantProfile = input.preferenceModel.profiles.find(
+    (profile) => profile.kind === input.preferenceModel.dominantKind
+  );
+  const stablePreference = Boolean(
+    dominantProfile &&
+      dominantProfile.signalCount >= PLAYER_SYSTEM_MISSION_STABLE_PREFERENCE_SIGNAL_COUNT &&
+      dominantProfile.confidence >= PLAYER_SYSTEM_MISSION_STABLE_PREFERENCE_CONFIDENCE
+  );
+  const rationale: string[] = [];
+
+  if (!input.featureFlagEnabled) {
+    return Object.freeze({
+      featureFlagId: PLAYER_SYSTEM_MISSIONS_FEATURE_FLAG_ID,
+      enabled: false,
+      phase: "disabled",
+      stablePreference,
+      fallbackUsed: false,
+      proposal: null,
+      rationale: Object.freeze([
+        "Mission rollout is disabled by the feature flag.",
+      ]),
+    });
+  }
+
+  if (stablePreference && dominantProfile) {
+    rationale.push(
+      `Stable ${dominantProfile.kind} preference evidence is available.`
+    );
+  } else {
+    rationale.push(
+      "Preference evidence is not stable; use the conservative bootstrap mission."
+    );
+  }
+
+  let selected: PlayerSystemMissionCandidate | undefined;
+  let selectedScore = Number.NEGATIVE_INFINITY;
+  let selectedReasons: string[] = [];
+
+  if (stablePreference && dominantProfile) {
+    const nearbyIds = new Set(
+      nearbyOpportunities.map((opportunity) => opportunity.opportunityId)
+    );
+    const pressureKinds = new Set(
+      worldStatePressures
+        .filter((pressure) => pressure.intensity > 0)
+        .map((pressure) => pressure.kind)
+    );
+
+    candidates.forEach((candidate) => {
+      if (readiness < candidate.minimumReadiness) {
+        return;
+      }
+
+      let score = 0;
+      const reasons: string[] = [];
+      if (candidate.preferenceKind === dominantProfile.kind) {
+        score += 4;
+        reasons.push("Preference evidence matches the selected mission.");
+      }
+      if (candidate.preferenceKind === input.mccFocusTarget) {
+        score += 3;
+        reasons.push("MCC focus target matches the selected mission.");
+      }
+      if (candidate.opportunityId && nearbyIds.has(candidate.opportunityId)) {
+        score += 2;
+        reasons.push("A nearby opportunity matches the selected mission.");
+      }
+      if (candidate.pressureKind && pressureKinds.has(candidate.pressureKind)) {
+        score += 2;
+        reasons.push("World-state pressure matches the selected mission.");
+      }
+
+      if (score > selectedScore) {
+        selected = candidate;
+        selectedScore = score;
+        selectedReasons = reasons;
+      }
+    });
+  }
+
+  const fallbackUsed = !selected;
+  const chosen = selected ?? bootstrap;
+  if (fallbackUsed) {
+    rationale.push("No safe adaptive candidate was eligible; bootstrap is the fallback.");
+  } else {
+    rationale.push(...selectedReasons);
+  }
+
+  const phase: Exclude<PlayerSystemMissionGenerationPhase, "disabled"> =
+    fallbackUsed ? "bootstrap" : "adaptive";
+  const proposal = Object.freeze({
+    ...chosen,
+    featureFlagId: PLAYER_SYSTEM_MISSIONS_FEATURE_FLAG_ID,
+    state: "proposed" as const,
+    phase,
+    rationale: freezeReadonlyArray(rationale),
+  });
+
+  return Object.freeze({
+    featureFlagId: PLAYER_SYSTEM_MISSIONS_FEATURE_FLAG_ID,
+    enabled: true,
+    phase,
+    stablePreference,
+    fallbackUsed,
+    proposal,
+    rationale: freezeReadonlyArray(rationale),
+  });
+}
+
+export function createPlayerSystemMission(
+  input: CreatePlayerSystemMissionInput
+): PlayerSystemMission {
+  if (input.proposal.state !== "proposed") {
+    throw new Error("proposal must start in proposed state");
+  }
+
+  const proposal = normalizeMissionProposal(input.proposal);
+  const now = input.now
+    ? normalizeTimestamp(input.now, "now")!
+    : new Date().toISOString();
+
+  return Object.freeze({
+    featureFlagId: PLAYER_SYSTEM_MISSIONS_FEATURE_FLAG_ID,
+    missionId: proposal.missionId,
+    title: proposal.title,
+    summary: proposal.summary,
+    preferenceKind: proposal.preferenceKind,
+    horizon: proposal.horizon,
+    state: "proposed" as const,
+    phase: proposal.phase,
+    createdAt: now,
+    updatedAt: now,
+    pinned: false,
+    cooldownUntil: null,
+    rationale: proposal.rationale,
+    transitions: Object.freeze([]),
+    learningSignals: Object.freeze([]),
+    rewardDecision: null,
+  });
+}
+
+export function evaluatePlayerSystemMissionReward(
+  input: PlayerSystemMissionRewardInput
+): PlayerSystemMissionRewardDecision {
+  const requestedAmount = assertFiniteNumber(input.requestedAmount, "requestedAmount");
+  if (requestedAmount <= 0) {
+    throw new Error("requestedAmount must be greater than zero");
+  }
+
+  const rewardType = input.rewardType;
+  if (input.preflight.rewardType !== rewardType) {
+    throw new Error("preflight rewardType must match rewardType");
+  }
+
+  const unit = assertNonEmptyString(input.unit, "unit");
+  const explanation = assertNonEmptyString(input.explanation, "explanation");
+  const preflight = evaluatePlayerSystemRewardPreflight(
+    input.preflight,
+    input.contract
+  );
+  const grantedAmount = preflight.allowed
+    ? Math.min(
+        requestedAmount,
+        preflight.remainingGlobal,
+        preflight.remainingSession
+      )
+    : 0;
+  const outcome: PlayerSystemMissionRewardOutcome = !preflight.allowed
+    ? "rejected"
+    : grantedAmount < requestedAmount
+      ? "modified"
+      : "approved";
+  const outcomeExplanation =
+    outcome === "rejected"
+      ? `Mission reward rejected: ${preflight.feedback}`
+      : outcome === "modified"
+        ? `Mission reward modified from ${requestedAmount} to ${grantedAmount}: ${preflight.feedback}`
+        : `Mission reward approved: ${preflight.feedback}`;
+
+  return Object.freeze({
+    outcome,
+    rewardType,
+    requestedAmount,
+    grantedAmount,
+    unit,
+    explanation: `${explanation} ${outcomeExplanation}`,
+    preflight,
+    metadata: Object.freeze({
+      ...(input.metadata ?? {}),
+      preflightStatus: preflight.status,
+      preflightWarnings: preflight.warnings,
+      remainingGlobal: preflight.remainingGlobal,
+      remainingSession: preflight.remainingSession,
+      requestedAmount,
+      grantedAmount,
+      outcome,
+    }),
+  });
+}
+
+export function transitionPlayerSystemMission(
+  mission: PlayerSystemMission,
+  input: PlayerSystemMissionTransitionInput
+): PlayerSystemMissionTransitionResult {
+  const at = input.at
+    ? normalizeTimestamp(input.at, "at")!
+    : new Date().toISOString();
+  let rewardDecision = mission.rewardDecision;
+  if (input.action === "surface-reward") {
+    if (!input.rewardDecision) {
+      throw new Error("surface-reward requires a rewardDecision");
+    }
+    if (input.rewardDecision.outcome === "rejected") {
+      throw new Error("cannot surface a rejected mission reward");
+    }
+    rewardDecision = input.rewardDecision;
+  }
+  const nextState = resolveMissionTransitionState(mission.state, input.action);
+
+  const transition = Object.freeze({
+    action: input.action,
+    from: mission.state,
+    to: nextState,
+    at,
+  });
+  const learningSignal = createMissionLearningSignal(mission, input, nextState);
+  const cooldownUntil =
+    nextState === "cooldown"
+      ? new Date(
+          new Date(at).getTime() +
+            (input.cooldownMs === undefined
+              ? 300000
+              : assertPositiveInteger(input.cooldownMs, "cooldownMs"))
+        ).toISOString()
+      : null;
+
+  const nextMission = Object.freeze({
+    ...mission,
+    state: nextState,
+    updatedAt: at,
+    pinned: mission.pinned || input.action === "pin",
+    cooldownUntil,
+    transitions: freezeReadonlyArray([...mission.transitions, transition]),
+    learningSignals: learningSignal
+      ? freezeReadonlyArray([...mission.learningSignals, learningSignal])
+      : mission.learningSignals,
+    rewardDecision,
+  });
+
+  return Object.freeze({ mission: nextMission, learningSignal });
+}
+
+export function applyPlayerSystemMissionTransition(
+  runtime: PlayerSystemRuntime,
+  mission: PlayerSystemMission,
+  input: PlayerSystemMissionTransitionInput
+): PlayerSystemMissionRuntimeTransitionResult {
+  const result = transitionPlayerSystemMission(mission, input);
+  const preferenceModel = result.learningSignal
+    ? runtime.recordPreferenceSignal(result.learningSignal)
+    : runtime.getState().preferenceModel;
+
+  return Object.freeze({ ...result, preferenceModel });
+}
+
 function assertPreferenceSignal(signal: PlayerPreferenceSignal): void {
   assertNonEmptyString(signal.signalId, "signalId");
   if (!isPlayerPreferenceSignalKind(signal.kind)) {
@@ -1750,6 +2214,220 @@ const SUPPORTED_TRAINING_AUTHORITIES = Object.freeze([
   "item-crafting",
   "dungeon-crafting",
 ] satisfies PlayerSystemTrainingAuthorityId[]);
+
+function normalizeMissionOpportunity(
+  input: PlayerSystemMissionOpportunity
+): PlayerSystemMissionOpportunity {
+  return Object.freeze({
+    opportunityId: assertNonEmptyString(input.opportunityId, "opportunityId"),
+    kind: assertPlayerPreferenceSignalKind(input.kind, "kind"),
+  });
+}
+
+function normalizeMissionWorldStatePressure(
+  input: PlayerSystemMissionWorldStatePressure
+): PlayerSystemMissionWorldStatePressure {
+  return Object.freeze({
+    kind: assertPlayerPreferenceSignalKind(input.kind, "kind"),
+    intensity: assertBoundedUnitInterval(input.intensity, "intensity"),
+    summary: assertNonEmptyString(input.summary, "summary"),
+  });
+}
+
+function normalizeMissionCandidate(
+  input: PlayerSystemMissionCandidate,
+  label: string
+): PlayerSystemMissionCandidate {
+  return Object.freeze({
+    missionId: assertNonEmptyString(input.missionId, `${label}.missionId`),
+    title: assertNonEmptyString(input.title, `${label}.title`),
+    summary: assertNonEmptyString(input.summary, `${label}.summary`),
+    preferenceKind: assertPlayerPreferenceSignalKind(
+      input.preferenceKind,
+      `${label}.preferenceKind`
+    ),
+    horizon: assertMissionHorizon(input.horizon, `${label}.horizon`),
+    minimumReadiness: assertBoundedUnitInterval(
+      input.minimumReadiness,
+      `${label}.minimumReadiness`
+    ),
+    opportunityId: normalizeNullableString(input.opportunityId),
+    pressureKind:
+      input.pressureKind === undefined || input.pressureKind === null
+        ? null
+        : assertPlayerPreferenceSignalKind(input.pressureKind, `${label}.pressureKind`),
+  });
+}
+
+function normalizeMissionProposal(
+  input: PlayerSystemMissionProposal
+): PlayerSystemMissionProposal {
+  if (
+    input.featureFlagId !== PLAYER_SYSTEM_MISSIONS_FEATURE_FLAG_ID ||
+    (input.phase !== "bootstrap" && input.phase !== "adaptive")
+  ) {
+    throw new Error("proposal must use the missions feature flag and a valid phase");
+  }
+
+  return Object.freeze({
+    ...normalizeMissionCandidate(input, "proposal"),
+    featureFlagId: PLAYER_SYSTEM_MISSIONS_FEATURE_FLAG_ID,
+    state: "proposed" as const,
+    phase: input.phase,
+    rationale: freezeReadonlyArray(
+      input.rationale.map((reason, index) =>
+        assertNonEmptyString(reason, `proposal.rationale[${index}]`)
+      )
+    ),
+  });
+}
+
+function assertPlayerPreferenceSignalKind(
+  value: unknown,
+  label: string
+): PlayerPreferenceSignalKind {
+  if (typeof value !== "string" || !isPlayerPreferenceSignalKind(value)) {
+    throw new Error(`${label} must be a supported preference signal kind`);
+  }
+
+  return value;
+}
+
+function assertMissionHorizon(
+  value: unknown,
+  label: string
+): PlayerSystemMissionHorizon {
+  if (
+    value !== "short-term" &&
+    value !== "medium-term" &&
+    value !== "long-horizon"
+  ) {
+    throw new Error(`${label} must be a supported mission horizon`);
+  }
+
+  return value;
+}
+
+function assertBoundedUnitInterval(value: unknown, label: string): number {
+  const normalized = assertFiniteNumber(value, label);
+  if (normalized < 0 || normalized > 1) {
+    throw new Error(`${label} must be between 0 and 1`);
+  }
+
+  return normalized;
+}
+
+function assertPositiveInteger(value: unknown, label: string): number {
+  if (!Number.isInteger(value) || (value as number) <= 0) {
+    throw new Error(`${label} must be a positive integer`);
+  }
+
+  return value as number;
+}
+
+function resolveMissionTransitionState(
+  state: PlayerSystemMissionLifecycleState,
+  action: PlayerSystemMissionTransitionAction
+): PlayerSystemMissionLifecycleState {
+  const allowedActions: Record<
+    PlayerSystemMissionLifecycleState,
+    readonly PlayerSystemMissionTransitionAction[]
+  > = {
+    proposed: ["accept", "refuse", "decline", "ignore", "pin"],
+    accepted: ["activate", "abandon", "pin"],
+    active: ["begin-completion", "fail", "abandon", "pin"],
+    refused: ["cooldown"],
+    abandoned: ["cooldown"],
+    completing: ["complete", "fail"],
+    completed: ["surface-reward"],
+    failed: ["cooldown"],
+    rewarding: ["cooldown"],
+    cooldown: [],
+  };
+
+  if (!allowedActions[state].includes(action)) {
+    throw new Error(`cannot transition mission from ${state} with ${action}`);
+  }
+
+  switch (action) {
+    case "accept":
+      return "accepted";
+    case "activate":
+      return "active";
+    case "refuse":
+    case "decline":
+    case "ignore":
+      return "refused";
+    case "begin-completion":
+      return "completing";
+    case "complete":
+      return "completed";
+    case "fail":
+      return "failed";
+    case "abandon":
+      return "abandoned";
+    case "surface-reward":
+      return "rewarding";
+    case "cooldown":
+      return "cooldown";
+    case "pin":
+      return state;
+  }
+}
+
+function createMissionLearningSignal(
+  mission: PlayerSystemMission,
+  input: PlayerSystemMissionTransitionInput,
+  nextState: PlayerSystemMissionLifecycleState
+): PlayerSystemMissionLearningSignal | null {
+  const decisions: Partial<
+    Record<PlayerSystemMissionTransitionAction, PlayerSystemMissionLearningDecision>
+  > = {
+    accept: "accepted",
+    refuse: "refused",
+    decline: "declined",
+    ignore: "ignored",
+    pin: "pinned",
+    complete: "completed",
+    fail: "failed",
+    abandon: "abandoned",
+  };
+  const decision = decisions[input.action];
+  if (!decision) {
+    return null;
+  }
+
+  const defaultConfidence: Record<
+    PlayerSystemMissionLearningDecision,
+    number
+  > = {
+    accepted: 0.7,
+    refused: 0.5,
+    declined: 0.45,
+    ignored: 0.4,
+    pinned: 0.8,
+    completed: 0.95,
+    failed: 0.6,
+    abandoned: 0.75,
+  };
+  const confidence =
+    input.confidence === undefined
+      ? defaultConfidence[decision]
+      : assertBoundedUnitInterval(input.confidence, "confidence");
+  const source = input.source
+    ? assertNonEmptyString(input.source, "source")
+    : `${PLAYER_SYSTEM_MISSIONS_FEATURE_FLAG_ID}:mission:${input.action}`;
+
+  return Object.freeze({
+    signalId: `${mission.missionId}:${input.action}:${mission.transitions.length + 1}`,
+    kind: mission.preferenceKind,
+    confidence,
+    source,
+    missionId: mission.missionId,
+    decision,
+    missionState: nextState,
+  });
+}
 
 function freezeReadonlyArray<T>(items: readonly T[]): readonly T[] {
   return Object.freeze([...items]);
