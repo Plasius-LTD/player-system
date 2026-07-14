@@ -35,6 +35,7 @@ npm install @plasius/player-system
 - authority-safe handoff readiness into external systems
 - training-route recommendations, blocked prerequisite explanations, and crafting-specialization handoff readiness
 - privacy-safe session-data minimization and runtime portability expectations
+- adaptive mission generation, lifecycle transitions, preference-learning signals, and bounded reward decisions
 
 It does not own rendering, world mutation, or institutional authority.
 
@@ -68,12 +69,17 @@ node demo/example.mjs
 ```ts
 import {
   PLAYER_SYSTEM_FEATURE_FLAG_ID,
+  PLAYER_SYSTEM_MISSIONS_FEATURE_FLAG_ID,
   createPlayerSystemTrainingAuthorityHandoff,
   createPlayerSystemTrainingInstitutionReadiness,
   createPlayerSystemTrainingRoutingState,
   createPlayerSystemPointsStoreState,
   createPlayerSystemPreferenceModelState,
   createPlayerSystemRuntime,
+  createPlayerSystemMission,
+  generatePlayerSystemMission,
+  applyPlayerSystemMissionTransition,
+  evaluatePlayerSystemMissionReward,
   defaultPlayerSystemRuntimeContract,
   defaultPlayerSystemRuntimePortabilityContract,
   createPlayerSystemSessionState,
@@ -166,6 +172,49 @@ console.log(
   }).devolutionAction.available
 );
 ```
+
+## Mission System orchestration
+
+The inherited rollout flag is
+`isekai.player-system.missions.enabled`. Hosts must pass the evaluated flag
+state explicitly; a disabled state returns no proposal. With the flag enabled,
+`generatePlayerSystemMission()` uses conservative bootstrap guidance until the
+preference model has three corroborating signals at or above `0.65` confidence,
+then ranks readiness-safe candidates using preference, MCC focus, nearby
+opportunities, and world-state pressure.
+
+```ts
+const generation = generatePlayerSystemMission({
+  featureFlagEnabled: true,
+  readiness: 0.2,
+  preferenceModel: runtime.getState().preferenceModel,
+  mccFocusTarget: null,
+  nearbyOpportunities: [],
+  worldStatePressures: [],
+  bootstrap: {
+    missionId: "bootstrap-survival",
+    title: "Find a safe place to rest",
+    summary: "Survey the nearby clearing before nightfall.",
+    preferenceKind: "exploration",
+    horizon: "short-term",
+    minimumReadiness: 0,
+  },
+  candidates: [],
+});
+
+if (generation.proposal) {
+  const mission = createPlayerSystemMission({ proposal: generation.proposal });
+  const accepted = applyPlayerSystemMissionTransition(runtime, mission, {
+    action: "accept",
+  });
+  console.log(accepted.mission.state, accepted.preferenceModel.dominantKind);
+}
+```
+
+Use `evaluatePlayerSystemMissionReward()` before any host reward application.
+It retains governance preflight evidence and reports `approved`, `modified`, or
+`rejected` with explanation metadata; rejected decisions cannot be surfaced by
+the mission lifecycle.
 
 ## Runtime NFR Contract
 
@@ -264,3 +313,4 @@ The Event Log and Achievement runtime boundary is documented in:
 Training-route orchestration is documented in:
 
 - [Player System Training Routing Orchestration](./docs/design/0003-training-routing-orchestration.md)
+- [Player System Mission Lifecycle and Reward Orchestration](./docs/design/0005-mission-lifecycle-and-reward-orchestration.md)

@@ -6,3 +6,4 @@
 - [ADR-0004: Player System Governance Runtime Boundary](./adr-0004-player-system-governance-runtime-boundary.md)
 - [ADR-0005: Player System Audio and Voice Orchestration Boundary](./adr-0005-player-system-audio-and-voice-orchestration-boundary.md)
 - [ADR-0006: Core Runtime Session and Module Orchestration](./adr-0006-core-runtime-session-orchestration.md)
+- [ADR-0007: Player System Mission Lifecycle and Bounded Rewards](./adr-0007-player-system-mission-lifecycle-and-bounded-rewards.md)
