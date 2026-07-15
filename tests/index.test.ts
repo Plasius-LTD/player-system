@@ -9,6 +9,7 @@ import {
   PLAYER_SYSTEM_EVENTS_ACHIEVEMENTS_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_MISSIONS_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_MCC_GUIDANCE_FEATURE_FLAG_ID,
+  PLAYER_SYSTEM_TUTORIAL_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_RUNTIME_NFR_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_RUNTIME_PORTABILITY_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_TRAINING_ROUTING_FEATURE_FLAG_ID,
@@ -31,6 +32,7 @@ import {
   createPlayerSystemTrainingInstitutionReadiness,
   createPlayerSystemTrainingRoutingState,
   createPlayerSystemMccGuidanceState,
+  createPlayerSystemTutorialProgressionState,
   createPlayerSystemPointsStoreState,
   createPlayerSystemPreferenceModelState,
   createPlayerSystemRuntime,
@@ -2432,5 +2434,206 @@ describe("@plasius/player-system", () => {
     expect(Object.isFrozen(guidance.missionBias?.preferredSignalKinds)).toBe(
       true
     );
+  });
+
+  it("unlocks tutorial steps by stage while preserving prerequisite blockers and replay help", () => {
+    const state = createPlayerSystemTutorialProgressionState({
+      featureFlagEnabled: true,
+      currentStage: "field-practice",
+      completedStepIds: ["awakening-basics"],
+      steps: [
+        {
+          stepId: "awakening-basics",
+          lane: "awakening",
+          title: "Awakening basics",
+          summary: "Learn the first safe interactions.",
+          replayable: true,
+        },
+        {
+          stepId: "field-route",
+          lane: "field-practice",
+          title: "Field route",
+          summary: "Choose a safe field practice route.",
+          requiredStage: "field-practice",
+        },
+        {
+          stepId: "academy-route",
+          lane: "spellcraft",
+          title: "Academy route",
+          summary: "Prepare for academy guidance.",
+          requiredStage: "academy-candidate",
+        },
+        {
+          stepId: "combat-recovery",
+          lane: "combat",
+          title: "Combat recovery",
+          summary: "Review recovery after combat.",
+          prerequisites: [
+            {
+              prerequisiteId: "recovery-window",
+              label: "Wait for a recovery window.",
+              satisfied: false,
+            },
+          ],
+        },
+      ],
+      combatCoaching: {
+        requested: true,
+        combatSafe: true,
+        mode: "reduced-combat",
+      },
+    });
+
+    expect(state.featureFlagId).toBe(PLAYER_SYSTEM_TUTORIAL_FEATURE_FLAG_ID);
+    expect(state.status).toBe("available");
+    expect(state.nextStepId).toBe("field-route");
+    expect(state.replay).toEqual({
+      status: "available",
+      stepId: "awakening-basics",
+      summary: "Completed tutorial help can be replayed on request.",
+    });
+    expect(state.steps.map((step) => [step.stepId, step.state])).toEqual([
+      ["awakening-basics", "completed"],
+      ["field-route", "available"],
+      ["academy-route", "locked"],
+      ["combat-recovery", "blocked"],
+    ]);
+    expect(state.steps[3]?.blockedPrerequisites[0]?.prerequisiteId).toBe(
+      "recovery-window"
+    );
+    expect(state.combatCoaching).toEqual({
+      requested: true,
+      combatSafe: true,
+      mode: "reduced-combat",
+      focusedPane: false,
+      allowed: true,
+      summary:
+        "Reduced combat coaching is available without opening a focused pane.",
+    });
+  });
+
+  it("keeps replay requests and full focused panes distinct from reduced combat coaching", () => {
+    const state = createPlayerSystemTutorialProgressionState({
+      featureFlagEnabled: true,
+      currentStage: "survival",
+      completedStepIds: ["survival-help"],
+      replayStepId: "survival-help",
+      steps: [
+        {
+          stepId: "survival-help",
+          lane: "controls",
+          title: "Survival help",
+          summary: "Replay survival controls.",
+          replayable: true,
+        },
+      ],
+      combatCoaching: {
+        requested: true,
+        combatSafe: false,
+        mode: "focused-pane",
+      },
+    });
+
+    expect(state.status).toBe("replaying");
+    expect(state.steps[0]?.state).toBe("replaying");
+    expect(state.replay.status).toBe("requested");
+    expect(state.combatCoaching.mode).toBe("focused-pane");
+    expect(state.combatCoaching.focusedPane).toBe(true);
+    expect(state.combatCoaching.allowed).toBe(true);
+  });
+
+  it("returns no tutorial surfaces when the rollout flag is disabled", () => {
+    const state = createPlayerSystemTutorialProgressionState({
+      featureFlagEnabled: false,
+      currentStage: "awakening",
+      completedStepIds: [],
+      steps: [
+        {
+          stepId: "intro",
+          lane: "awakening",
+          title: "Introduction",
+          summary: "Start here.",
+        },
+      ],
+      combatCoaching: {
+        requested: true,
+        combatSafe: true,
+      },
+    });
+
+    expect(state.enabled).toBe(false);
+    expect(state.status).toBe("disabled");
+    expect(state.steps).toEqual([]);
+    expect(state.nextStepId).toBeNull();
+    expect(state.replay.status).toBe("none");
+    expect(state.combatCoaching.mode).toBe("none");
+    expect(state.combatCoaching.allowed).toBe(false);
+  });
+
+  it("fails closed for invalid tutorial state and freezes normalized snapshots", () => {
+    expect(() =>
+      createPlayerSystemTutorialProgressionState({
+        featureFlagEnabled: true,
+        currentStage: "unknown" as never,
+        completedStepIds: [],
+        steps: [],
+      })
+    ).toThrow("currentStage must be a supported tutorial stage");
+
+    expect(() =>
+      createPlayerSystemTutorialProgressionState({
+        featureFlagEnabled: true,
+        currentStage: "awakening",
+        completedStepIds: ["missing"],
+        steps: [],
+      })
+    ).toThrow("completedStepIds contains unknown step ID");
+
+    expect(() =>
+      createPlayerSystemTutorialProgressionState({
+        featureFlagEnabled: true,
+        currentStage: "awakening",
+        completedStepIds: ["intro"],
+        steps: [
+          {
+            stepId: "intro",
+            lane: "awakening",
+            title: "Intro",
+            summary: "Start here.",
+            replayable: false,
+          },
+        ],
+        replayStepId: "intro",
+      })
+    ).toThrow("replayStepId must reference a replayable tutorial step");
+
+    const input = [
+      {
+        prerequisiteId: "safe-window",
+        label: "Safe window",
+        satisfied: false,
+      },
+    ];
+    const state = createPlayerSystemTutorialProgressionState({
+      featureFlagEnabled: true,
+      currentStage: "awakening",
+      completedStepIds: [],
+      steps: [
+        {
+          stepId: "intro",
+          lane: "awakening",
+          title: "Intro",
+          summary: "Start here.",
+          prerequisites: input,
+        },
+      ],
+    });
+    input[0]!.label = "Mutated";
+
+    expect(state.steps[0]?.blockedPrerequisites[0]?.label).toBe("Safe window");
+    expect(Object.isFrozen(state)).toBe(true);
+    expect(Object.isFrozen(state.steps)).toBe(true);
+    expect(Object.isFrozen(state.steps[0]?.prerequisites)).toBe(true);
+    expect(Object.isFrozen(state.combatCoaching)).toBe(true);
   });
 });

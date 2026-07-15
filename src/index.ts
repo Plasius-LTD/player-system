@@ -541,6 +541,114 @@ export interface PlayerSystemMccGuidanceState {
   readonly spellcraft: PlayerSystemMccSpellcraftGuidance | null;
 }
 
+export type PlayerSystemTutorialStage =
+  | "awakening"
+  | "survival"
+  | "field-practice"
+  | "guild-cleared"
+  | "academy-candidate"
+  | "apprenticeship-candidate";
+
+export type PlayerSystemTutorialLane =
+  | "awakening"
+  | "controls"
+  | "field-practice"
+  | "combat"
+  | "spellcraft";
+
+export type PlayerSystemTutorialStepState =
+  | "locked"
+  | "blocked"
+  | "available"
+  | "completed"
+  | "replaying";
+
+export type PlayerSystemTutorialProgressionStatus =
+  | "disabled"
+  | "available"
+  | "blocked"
+  | "complete"
+  | "replaying";
+
+export type PlayerSystemTutorialReplayStatus =
+  | "none"
+  | "available"
+  | "requested";
+
+export type PlayerSystemTutorialCoachingMode =
+  | "none"
+  | "reduced-combat"
+  | "focused-pane";
+
+export interface PlayerSystemTutorialPrerequisiteInput {
+  readonly prerequisiteId: string;
+  readonly label: string;
+  readonly satisfied: boolean;
+}
+
+export type PlayerSystemTutorialPrerequisite =
+  PlayerSystemTutorialPrerequisiteInput;
+
+export interface PlayerSystemTutorialStepInput {
+  readonly stepId: string;
+  readonly lane: PlayerSystemTutorialLane;
+  readonly title: string;
+  readonly summary: string;
+  readonly requiredStage?: PlayerSystemTutorialStage;
+  readonly prerequisites?: readonly PlayerSystemTutorialPrerequisiteInput[];
+  readonly replayable?: boolean;
+}
+
+export interface PlayerSystemTutorialStep extends PlayerSystemTutorialStepInput {
+  readonly requiredStage: PlayerSystemTutorialStage;
+  readonly prerequisites: readonly PlayerSystemTutorialPrerequisite[];
+  readonly replayable: boolean;
+  readonly state: PlayerSystemTutorialStepState;
+  readonly blockedPrerequisites: readonly PlayerSystemTutorialPrerequisite[];
+}
+
+export interface PlayerSystemTutorialCombatCoachingInput {
+  readonly requested: boolean;
+  readonly combatSafe: boolean;
+  readonly mode?: Exclude<PlayerSystemTutorialCoachingMode, "none">;
+}
+
+export interface PlayerSystemTutorialCombatCoaching {
+  readonly requested: boolean;
+  readonly combatSafe: boolean;
+  readonly mode: PlayerSystemTutorialCoachingMode;
+  readonly focusedPane: boolean;
+  readonly allowed: boolean;
+  readonly summary: string;
+}
+
+export interface PlayerSystemTutorialReplayState {
+  readonly status: PlayerSystemTutorialReplayStatus;
+  readonly stepId: string | null;
+  readonly summary: string;
+}
+
+export interface PlayerSystemTutorialProgressionInput {
+  readonly featureFlagEnabled: boolean;
+  readonly currentStage: PlayerSystemTutorialStage;
+  readonly completedStepIds: readonly string[];
+  readonly steps: readonly PlayerSystemTutorialStepInput[];
+  readonly replayStepId?: string | null;
+  readonly combatCoaching?: PlayerSystemTutorialCombatCoachingInput;
+}
+
+export interface PlayerSystemTutorialProgressionState {
+  readonly featureFlagId: typeof PLAYER_SYSTEM_TUTORIAL_FEATURE_FLAG_ID;
+  readonly enabled: boolean;
+  readonly status: PlayerSystemTutorialProgressionStatus;
+  readonly currentStage: PlayerSystemTutorialStage;
+  readonly completedStepIds: readonly string[];
+  readonly steps: readonly PlayerSystemTutorialStep[];
+  readonly nextStepId: string | null;
+  readonly replay: PlayerSystemTutorialReplayState;
+  readonly combatCoaching: PlayerSystemTutorialCombatCoaching;
+}
+
 export type PlayerSystemGovernanceMode = "child-safe" | "harder-mode";
 
 export type PlayerSystemGovernanceRuntimeSource =
@@ -1155,6 +1263,8 @@ export const PLAYER_SYSTEM_TRAINING_ROUTING_FEATURE_FLAG_ID =
   "isekai.player-system.training-routing.enabled";
 export const PLAYER_SYSTEM_MCC_GUIDANCE_FEATURE_FLAG_ID =
   "isekai.player-system.mcc-guidance.enabled";
+export const PLAYER_SYSTEM_TUTORIAL_FEATURE_FLAG_ID =
+  "isekai.player-system.tutorial.enabled" as const;
 export const PLAYER_SYSTEM_POINTS_STORE_FEATURE_FLAG_ID =
   "isekai.player-system.points-store.enabled";
 export const PLAYER_SYSTEM_GOVERNANCE_FEATURE_FLAG_ID =
@@ -2695,6 +2805,21 @@ const MCC_GUIDANCE_FOCUS_RATIONALE: Record<MccExpressionTrack, string> =
   });
 
 const MAX_PLAYER_SYSTEM_MCC_GUIDANCE_WARNINGS = 8;
+const MAX_PLAYER_SYSTEM_TUTORIAL_STEPS = 64;
+const MAX_PLAYER_SYSTEM_TUTORIAL_COMPLETED_STEPS = 64;
+const MAX_PLAYER_SYSTEM_TUTORIAL_PREREQUISITES = 8;
+
+const PLAYER_SYSTEM_TUTORIAL_STAGE_ORDER: Record<
+  PlayerSystemTutorialStage,
+  number
+> = Object.freeze({
+  awakening: 0,
+  survival: 1,
+  "field-practice": 2,
+  "guild-cleared": 3,
+  "academy-candidate": 4,
+  "apprenticeship-candidate": 5,
+});
 
 function normalizeMissionOpportunity(
   input: PlayerSystemMissionOpportunity
@@ -4143,6 +4268,321 @@ export function createPlayerSystemMccGuidanceState(
       warnings,
       authorityHandoff,
     }),
+  });
+}
+
+function assertPlayerSystemTutorialStage(
+  value: unknown,
+  label: string
+): PlayerSystemTutorialStage {
+  if (
+    value !== "awakening" &&
+    value !== "survival" &&
+    value !== "field-practice" &&
+    value !== "guild-cleared" &&
+    value !== "academy-candidate" &&
+    value !== "apprenticeship-candidate"
+  ) {
+    throw new Error(`${label} must be a supported tutorial stage`);
+  }
+
+  return value;
+}
+
+function assertPlayerSystemTutorialLane(
+  value: unknown,
+  label: string
+): PlayerSystemTutorialLane {
+  if (
+    value !== "awakening" &&
+    value !== "controls" &&
+    value !== "field-practice" &&
+    value !== "combat" &&
+    value !== "spellcraft"
+  ) {
+    throw new Error(`${label} must be a supported tutorial lane`);
+  }
+
+  return value;
+}
+
+function normalizePlayerSystemTutorialPrerequisites(
+  prerequisites: readonly PlayerSystemTutorialPrerequisiteInput[] | undefined,
+  label: string
+): readonly PlayerSystemTutorialPrerequisite[] {
+  const entries = prerequisites ?? [];
+  if (!Array.isArray(entries)) {
+    throw new Error(`${label} must be an array`);
+  }
+  if (entries.length > MAX_PLAYER_SYSTEM_TUTORIAL_PREREQUISITES) {
+    throw new Error(
+      `${label} must contain at most ${MAX_PLAYER_SYSTEM_TUTORIAL_PREREQUISITES} entries`
+    );
+  }
+
+  const ids = new Set<string>();
+  return freezeReadonlyArray(
+    entries.map((entry, index) => {
+      const entryLabel = `${label}[${index}]`;
+      const prerequisiteId = assertNonEmptyString(
+        entry.prerequisiteId,
+        `${entryLabel}.prerequisiteId`
+      );
+      if (ids.has(prerequisiteId)) {
+        throw new Error(`${label} must not contain duplicate prerequisite IDs`);
+      }
+      ids.add(prerequisiteId);
+
+      assertBoolean(entry.satisfied, `${entryLabel}.satisfied`);
+      return Object.freeze({
+        prerequisiteId,
+        label: assertNonEmptyString(entry.label, `${entryLabel}.label`),
+        satisfied: entry.satisfied,
+      });
+    })
+  );
+}
+
+function normalizePlayerSystemTutorialStep(
+  input: PlayerSystemTutorialStepInput,
+  index: number
+): Omit<
+  PlayerSystemTutorialStep,
+  "state" | "blockedPrerequisites"
+> {
+  const label = `steps[${index}]`;
+  assertPlayerSystemTutorialLane(input.lane, `${label}.lane`);
+  const replayable = input.replayable ?? false;
+  if (input.replayable !== undefined) {
+    assertBoolean(input.replayable, `${label}.replayable`);
+  }
+
+  return Object.freeze({
+    stepId: assertNonEmptyString(input.stepId, `${label}.stepId`),
+    lane: input.lane,
+    title: assertNonEmptyString(input.title, `${label}.title`),
+    summary: assertNonEmptyString(input.summary, `${label}.summary`),
+    requiredStage: input.requiredStage
+      ? assertPlayerSystemTutorialStage(
+          input.requiredStage,
+          `${label}.requiredStage`
+        )
+      : "awakening",
+    prerequisites: normalizePlayerSystemTutorialPrerequisites(
+      input.prerequisites,
+      `${label}.prerequisites`
+    ),
+    replayable,
+  });
+}
+
+function createPlayerSystemTutorialCombatCoaching(
+  input: PlayerSystemTutorialCombatCoachingInput | undefined,
+  enabled: boolean
+): PlayerSystemTutorialCombatCoaching {
+  const requested = input?.requested ?? false;
+  const combatSafe = input?.combatSafe ?? true;
+  if (input) {
+    assertBoolean(input.requested, "combatCoaching.requested");
+    assertBoolean(input.combatSafe, "combatCoaching.combatSafe");
+  }
+
+  const mode = input?.mode ?? "reduced-combat";
+  if (
+    mode !== "reduced-combat" &&
+    mode !== "focused-pane"
+  ) {
+    throw new Error(
+      "combatCoaching.mode must be reduced-combat or focused-pane"
+    );
+  }
+
+  if (!enabled || !requested) {
+    return Object.freeze({
+      requested,
+      combatSafe,
+      mode: "none",
+      focusedPane: false,
+      allowed: false,
+      summary: enabled
+        ? "No tutorial combat coaching was requested."
+        : "Tutorial coaching is disabled by the feature flag.",
+    });
+  }
+
+  const focusedPane = mode === "focused-pane";
+  const allowed = focusedPane ? !combatSafe : combatSafe;
+  return Object.freeze({
+    requested,
+    combatSafe,
+    mode,
+    focusedPane,
+    allowed,
+    summary: allowed
+      ? focusedPane
+        ? "Full focused-pane coaching is available outside combat-safe mode."
+        : "Reduced combat coaching is available without opening a focused pane."
+      : focusedPane
+        ? "Focused-pane coaching is withheld during combat-safe mode."
+        : "Reduced combat coaching is withheld outside combat-safe mode.",
+  });
+}
+
+export function createPlayerSystemTutorialProgressionState(
+  input: PlayerSystemTutorialProgressionInput
+): PlayerSystemTutorialProgressionState {
+  assertBoolean(input.featureFlagEnabled, "featureFlagEnabled");
+  const currentStage = assertPlayerSystemTutorialStage(
+    input.currentStage,
+    "currentStage"
+  );
+  if (!Array.isArray(input.completedStepIds)) {
+    throw new Error("completedStepIds must be an array");
+  }
+  if (
+    input.completedStepIds.length >
+    MAX_PLAYER_SYSTEM_TUTORIAL_COMPLETED_STEPS
+  ) {
+    throw new Error(
+      `completedStepIds must contain at most ${MAX_PLAYER_SYSTEM_TUTORIAL_COMPLETED_STEPS} entries`
+    );
+  }
+
+  const completedStepIds = input.completedStepIds.map((stepId, index) =>
+    assertNonEmptyString(stepId, `completedStepIds[${index}]`)
+  );
+  if (new Set(completedStepIds).size !== completedStepIds.length) {
+    throw new Error("completedStepIds must not contain duplicates");
+  }
+
+  if (!Array.isArray(input.steps)) {
+    throw new Error("steps must be an array");
+  }
+  if (input.steps.length > MAX_PLAYER_SYSTEM_TUTORIAL_STEPS) {
+    throw new Error(
+      `steps must contain at most ${MAX_PLAYER_SYSTEM_TUTORIAL_STEPS} entries`
+    );
+  }
+
+  const normalizedSteps = input.steps.map(normalizePlayerSystemTutorialStep);
+  const stepIds = normalizedSteps.map((step) => step.stepId);
+  if (new Set(stepIds).size !== stepIds.length) {
+    throw new Error("steps must not contain duplicate step IDs");
+  }
+  const stepsById = new Map(normalizedSteps.map((step) => [step.stepId, step]));
+  const completed = new Set(completedStepIds);
+  for (const stepId of completed) {
+    if (!stepsById.has(stepId)) {
+      throw new Error(`completedStepIds contains unknown step ID: ${stepId}`);
+    }
+  }
+
+  const replayStepId = input.replayStepId ?? null;
+  if (replayStepId !== null) {
+    const replayStep = stepsById.get(
+      assertNonEmptyString(replayStepId, "replayStepId")
+    );
+    if (!replayStep || !completed.has(replayStep.stepId)) {
+      throw new Error(
+        "replayStepId must reference a completed tutorial step"
+      );
+    }
+    if (!replayStep.replayable) {
+      throw new Error("replayStepId must reference a replayable tutorial step");
+    }
+  }
+
+  const stageOrder = PLAYER_SYSTEM_TUTORIAL_STAGE_ORDER[currentStage];
+  const steps = freezeReadonlyArray(
+    normalizedSteps.map((step) => {
+      const blockedPrerequisites = freezeReadonlyArray(
+        step.prerequisites.filter((prerequisite) => !prerequisite.satisfied)
+      );
+      const stageUnlocked =
+        stageOrder >= PLAYER_SYSTEM_TUTORIAL_STAGE_ORDER[step.requiredStage];
+      const state: PlayerSystemTutorialStepState =
+        replayStepId === step.stepId
+          ? "replaying"
+          : completed.has(step.stepId)
+            ? "completed"
+            : !stageUnlocked
+              ? "locked"
+              : blockedPrerequisites.length > 0
+                ? "blocked"
+                : "available";
+
+      return Object.freeze({
+        ...step,
+        state,
+        blockedPrerequisites,
+      });
+    })
+  );
+
+  const replayableCompleted = steps.filter(
+    (step) => step.replayable && completed.has(step.stepId)
+  );
+  const replay: PlayerSystemTutorialReplayState = Object.freeze(
+    replayStepId
+      ? {
+          status: "requested",
+          stepId: replayStepId,
+          summary: "Replay requested for a completed tutorial step.",
+        }
+      : replayableCompleted.length > 0
+        ? {
+            status: "available",
+            stepId: replayableCompleted[0]!.stepId,
+            summary: "Completed tutorial help can be replayed on request.",
+          }
+        : {
+            status: "none",
+            stepId: null,
+            summary: "No completed tutorial step is currently replayable.",
+          }
+  );
+  const nextStep = steps.find((step) => step.state === "available") ?? null;
+  const blocked = steps.some((step) => step.state === "blocked");
+  const status: PlayerSystemTutorialProgressionStatus = replayStepId
+    ? "replaying"
+    : nextStep
+      ? "available"
+      : blocked
+        ? "blocked"
+        : "complete";
+
+  const combatCoaching = createPlayerSystemTutorialCombatCoaching(
+    input.combatCoaching,
+    input.featureFlagEnabled
+  );
+  if (!input.featureFlagEnabled) {
+    return Object.freeze({
+      featureFlagId: PLAYER_SYSTEM_TUTORIAL_FEATURE_FLAG_ID,
+      enabled: false,
+      status: "disabled",
+      currentStage,
+      completedStepIds: freezeReadonlyArray(completedStepIds),
+      steps: freezeReadonlyArray([]),
+      nextStepId: null,
+      replay: Object.freeze({
+        status: "none",
+        stepId: null,
+        summary: "Tutorial progression is disabled by the feature flag.",
+      }),
+      combatCoaching,
+    });
+  }
+
+  return Object.freeze({
+    featureFlagId: PLAYER_SYSTEM_TUTORIAL_FEATURE_FLAG_ID,
+    enabled: true,
+    status,
+    currentStage,
+    completedStepIds: freezeReadonlyArray(completedStepIds),
+    steps,
+    nextStepId: nextStep?.stepId ?? null,
+    replay,
+    combatCoaching,
   });
 }
 
