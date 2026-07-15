@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 - **Added**
+  - (placeholder)
+
+- **Changed**
+  - (placeholder)
+
+- **Fixed**
+  - (placeholder)
+
+- **Security**
+  - (placeholder)
+
+## [0.1.15] - 2026-07-15
+
+- **Added**
   - Added immutable MCC guidance orchestration under `isekai.player-system.mcc-guidance.enabled`, including focus-aware mission bias, bounded readiness and safety warnings, authoritative feasibility composition, and advisory spellcraft handoffs.
 
 - **Changed**
@@ -149,3 +163,4 @@ All notable changes to this project will be documented in this file.
 [0.1.12]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.12
 [0.1.13]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.13
 [0.1.14]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.14
+[0.1.15]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.15
