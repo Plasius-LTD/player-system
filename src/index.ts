@@ -898,6 +898,69 @@ export interface PlayerSystemMissionRuntimeTransitionResult
   readonly preferenceModel: PlayerSystemPreferenceModelState;
 }
 
+export type PlayerSystemGuildQuestState = "accepted";
+
+export interface PlayerSystemGuildQuestAuthorityState {
+  readonly questId: string;
+  readonly guildId: string;
+  readonly state: PlayerSystemGuildQuestState;
+  readonly title: string;
+  readonly summary: string;
+  readonly routeId: string | null;
+  readonly synergyTags: readonly string[];
+  readonly acceptedAt: string;
+  readonly updatedAt: string;
+  readonly sourceVersion: number;
+}
+
+export interface PlayerSystemGuildQuestMissionReference {
+  readonly missionId: string;
+  readonly routeId?: string | null;
+  readonly synergyTags?: readonly string[];
+}
+
+export type PlayerSystemGuildQuestSynergyStrength = "partial" | "strong";
+
+export interface PlayerSystemGuildQuestMissionSynergy {
+  readonly missionId: string;
+  readonly strength: PlayerSystemGuildQuestSynergyStrength;
+  readonly matchedTags: readonly string[];
+  readonly routeAligned: boolean;
+}
+
+export interface PlayerSystemGuildQuestRouteConflict {
+  readonly state: "clear" | "conflict";
+  readonly routeId: string | null;
+  readonly conflictingQuestIds: readonly string[];
+  readonly conflictingMissionIds: readonly string[];
+}
+
+export interface PlayerSystemGuildQuestSystemAnnotation {
+  readonly annotatedAt: string;
+  readonly missionSynergy: readonly PlayerSystemGuildQuestMissionSynergy[];
+  readonly routeConflict: PlayerSystemGuildQuestRouteConflict;
+}
+
+export interface PlayerSystemGuildQuestRuntimeTracking {
+  readonly authority: PlayerSystemGuildQuestAuthorityState;
+  readonly system: PlayerSystemGuildQuestSystemAnnotation;
+}
+
+export interface PlayerSystemGuildQuestSynchronizationInput {
+  readonly featureFlagEnabled: boolean;
+  readonly acceptedQuests: readonly PlayerSystemGuildQuestAuthorityState[];
+  readonly missions: readonly PlayerSystemGuildQuestMissionReference[];
+  readonly now?: string;
+}
+
+export interface PlayerSystemGuildQuestSynchronizationResult {
+  readonly featureFlagId: typeof PLAYER_SYSTEM_GUILD_QUESTS_FEATURE_FLAG_ID;
+  readonly enabled: boolean;
+  readonly synchronizedAt: string;
+  readonly tracking: readonly PlayerSystemGuildQuestRuntimeTracking[];
+  readonly rationale: readonly string[];
+}
+
 export const PLAYER_SYSTEM_PACKAGE = "@plasius/player-system";
 export const PLAYER_SYSTEM_ENV_PREFIX = "PLAYER_SYSTEM";
 export const PLAYER_SYSTEM_PACKAGES_FEATURE_FLAG_ID =
@@ -915,6 +978,8 @@ export const PLAYER_SYSTEM_POINTS_STORE_FEATURE_FLAG_ID =
   "isekai.player-system.points-store.enabled";
 export const PLAYER_SYSTEM_GOVERNANCE_FEATURE_FLAG_ID =
   "isekai.player-system.governance.enabled";
+export const PLAYER_SYSTEM_GUILD_QUESTS_FEATURE_FLAG_ID =
+  "isekai.player-system.guild-quests.enabled" as const;
 export const PLAYER_SYSTEM_GOVERNANCE_CONTRACT_VERSION = "2026-06-19.v1";
 
 export const PLAYER_SYSTEM_GOVERNANCE_OVERDRIVE_ELIGIBILITY_CHECKS =
@@ -1844,6 +1909,104 @@ export function generatePlayerSystemMission(
   });
 }
 
+export function synchronizePlayerSystemGuildQuests(
+  input: PlayerSystemGuildQuestSynchronizationInput
+): PlayerSystemGuildQuestSynchronizationResult {
+  assertBoolean(input.featureFlagEnabled, "featureFlagEnabled");
+  if (!Array.isArray(input.acceptedQuests)) {
+    throw new Error("acceptedQuests must be an array");
+  }
+  if (!Array.isArray(input.missions)) {
+    throw new Error("missions must be an array");
+  }
+  if (input.acceptedQuests.length > MAX_PLAYER_SYSTEM_GUILD_QUESTS) {
+    throw new Error(
+      `acceptedQuests must contain at most ${MAX_PLAYER_SYSTEM_GUILD_QUESTS} entries`
+    );
+  }
+  if (input.missions.length > MAX_PLAYER_SYSTEM_GUILD_QUEST_MISSIONS) {
+    throw new Error(
+      `missions must contain at most ${MAX_PLAYER_SYSTEM_GUILD_QUEST_MISSIONS} entries`
+    );
+  }
+
+  const synchronizedAt =
+    normalizeTimestamp(input.now, "now") ?? new Date().toISOString();
+  const acceptedQuests = input.acceptedQuests
+    .map((quest, index) =>
+      normalizePlayerSystemGuildQuestAuthorityState(
+        quest,
+        `acceptedQuests[${index}]`
+      )
+    )
+    .sort((left, right) => left.questId.localeCompare(right.questId));
+  const questIds = new Set<string>();
+  for (const quest of acceptedQuests) {
+    if (questIds.has(quest.questId)) {
+      throw new Error("acceptedQuests must not contain duplicate questId values");
+    }
+    questIds.add(quest.questId);
+  }
+
+  const missions = input.missions
+    .map((mission, index) =>
+      normalizePlayerSystemGuildQuestMissionReference(
+        mission,
+        `missions[${index}]`
+      )
+    )
+    .sort((left, right) => left.missionId.localeCompare(right.missionId));
+  const missionIds = new Set<string>();
+  for (const mission of missions) {
+    if (missionIds.has(mission.missionId)) {
+      throw new Error("missions must not contain duplicate missionId values");
+    }
+    missionIds.add(mission.missionId);
+  }
+
+  if (!input.featureFlagEnabled) {
+    return Object.freeze({
+      featureFlagId: PLAYER_SYSTEM_GUILD_QUESTS_FEATURE_FLAG_ID,
+      enabled: false,
+      synchronizedAt,
+      tracking: Object.freeze([]),
+      rationale: Object.freeze([
+        "Guild-quest rollout is disabled by the feature flag.",
+      ]),
+    });
+  }
+
+  const tracking = acceptedQuests.map((authority) =>
+    Object.freeze({
+      authority,
+      system: Object.freeze({
+        annotatedAt: synchronizedAt,
+        missionSynergy: freezeReadonlyArray(
+          missions.flatMap((mission) =>
+            resolvePlayerSystemGuildQuestMissionSynergy(authority, mission)
+          )
+        ),
+        routeConflict: resolvePlayerSystemGuildQuestRouteConflict(
+          authority,
+          acceptedQuests,
+          missions
+        ),
+      }),
+    })
+  );
+
+  return Object.freeze({
+    featureFlagId: PLAYER_SYSTEM_GUILD_QUESTS_FEATURE_FLAG_ID,
+    enabled: true,
+    synchronizedAt,
+    tracking: freezeReadonlyArray(tracking),
+    rationale: Object.freeze([
+      `Synchronized ${acceptedQuests.length} accepted guild quest(s) into runtime tracking.`,
+      "Guild authority state and System annotations remain separate.",
+    ]),
+  });
+}
+
 export function createPlayerSystemMission(
   input: CreatePlayerSystemMissionInput
 ): PlayerSystemMission {
@@ -2256,6 +2419,142 @@ function normalizeMissionCandidate(
       input.pressureKind === undefined || input.pressureKind === null
         ? null
         : assertPlayerPreferenceSignalKind(input.pressureKind, `${label}.pressureKind`),
+  });
+}
+
+const MAX_PLAYER_SYSTEM_GUILD_QUESTS = 100;
+const MAX_PLAYER_SYSTEM_GUILD_QUEST_TAGS = 16;
+const MAX_PLAYER_SYSTEM_GUILD_QUEST_MISSIONS = 100;
+
+function normalizePlayerSystemGuildQuestAuthorityState(
+  input: PlayerSystemGuildQuestAuthorityState,
+  label: string
+): PlayerSystemGuildQuestAuthorityState {
+  if (input.state !== "accepted") {
+    throw new Error(`${label}.state must be accepted`);
+  }
+
+  if (!Array.isArray(input.synergyTags)) {
+    throw new Error(`${label}.synergyTags must be an array`);
+  }
+
+  if (input.sourceVersion === undefined) {
+    throw new Error(`${label}.sourceVersion must be a positive integer`);
+  }
+
+  const normalized = Object.freeze({
+    questId: assertNonEmptyString(input.questId, `${label}.questId`),
+    guildId: assertNonEmptyString(input.guildId, `${label}.guildId`),
+    state: "accepted" as const,
+    title: assertNonEmptyString(input.title, `${label}.title`),
+    summary: assertNonEmptyString(input.summary, `${label}.summary`),
+    routeId: normalizeNullableString(input.routeId),
+    synergyTags: normalizeGuildQuestTags(input.synergyTags, `${label}.synergyTags`),
+    acceptedAt: normalizeRequiredTimestamp(input.acceptedAt, `${label}.acceptedAt`),
+    updatedAt: normalizeRequiredTimestamp(input.updatedAt, `${label}.updatedAt`),
+    sourceVersion: assertPositiveInteger(input.sourceVersion, `${label}.sourceVersion`),
+  });
+
+  return normalized;
+}
+
+function normalizePlayerSystemGuildQuestMissionReference(
+  input: PlayerSystemGuildQuestMissionReference,
+  label: string
+): PlayerSystemGuildQuestMissionReference {
+  if (input.synergyTags !== undefined && !Array.isArray(input.synergyTags)) {
+    throw new Error(`${label}.synergyTags must be an array`);
+  }
+
+  return Object.freeze({
+    missionId: assertNonEmptyString(input.missionId, `${label}.missionId`),
+    routeId: normalizeNullableString(input.routeId),
+    synergyTags: normalizeGuildQuestTags(
+      input.synergyTags ?? [],
+      `${label}.synergyTags`
+    ),
+  });
+}
+
+function normalizeGuildQuestTags(
+  value: readonly string[],
+  label: string
+): readonly string[] {
+  if (value.length > MAX_PLAYER_SYSTEM_GUILD_QUEST_TAGS) {
+    throw new Error(
+      `${label} must contain at most ${MAX_PLAYER_SYSTEM_GUILD_QUEST_TAGS} entries`
+    );
+  }
+
+  const normalized = value.map((tag, index) =>
+    assertNonEmptyString(tag, `${label}[${index}]`)
+  );
+  const unique = [...new Set(normalized)].sort((left, right) =>
+    left.localeCompare(right)
+  );
+  return freezeReadonlyArray(unique);
+}
+
+function normalizeRequiredTimestamp(value: string, label: string): string {
+  const normalized = normalizeTimestamp(value, label);
+  if (!normalized) {
+    throw new Error(`${label} must be a valid ISO timestamp`);
+  }
+  return normalized;
+}
+
+function resolvePlayerSystemGuildQuestMissionSynergy(
+  authority: PlayerSystemGuildQuestAuthorityState,
+  mission: PlayerSystemGuildQuestMissionReference
+): readonly PlayerSystemGuildQuestMissionSynergy[] {
+  const missionTags = new Set(mission.synergyTags ?? []);
+  const matchedTags = authority.synergyTags.filter((tag) => missionTags.has(tag));
+  const routeAligned = Boolean(
+    authority.routeId && mission.routeId && authority.routeId === mission.routeId
+  );
+
+  if (matchedTags.length === 0 && !routeAligned) {
+    return [];
+  }
+
+  return [
+    Object.freeze({
+      missionId: mission.missionId,
+      strength:
+        routeAligned || matchedTags.length > 1 ? ("strong" as const) : ("partial" as const),
+      matchedTags: freezeReadonlyArray(matchedTags),
+      routeAligned,
+    }),
+  ];
+}
+
+function resolvePlayerSystemGuildQuestRouteConflict(
+  authority: PlayerSystemGuildQuestAuthorityState,
+  acceptedQuests: readonly PlayerSystemGuildQuestAuthorityState[],
+  missions: readonly PlayerSystemGuildQuestMissionReference[]
+): PlayerSystemGuildQuestRouteConflict {
+  const conflictingQuestIds = authority.routeId
+    ? acceptedQuests
+        .filter(
+          (quest) =>
+            quest.questId !== authority.questId && quest.routeId === authority.routeId
+        )
+        .map((quest) => quest.questId)
+    : [];
+  const conflictingMissionIds = authority.routeId
+    ? missions
+        .filter((mission) => mission.routeId === authority.routeId)
+        .map((mission) => mission.missionId)
+    : [];
+
+  return Object.freeze({
+    state:
+      conflictingQuestIds.length > 0 || conflictingMissionIds.length > 0
+        ? ("conflict" as const)
+        : ("clear" as const),
+    routeId: authority.routeId,
+    conflictingQuestIds: freezeReadonlyArray(conflictingQuestIds),
+    conflictingMissionIds: freezeReadonlyArray(conflictingMissionIds),
   });
 }
 

@@ -36,6 +36,7 @@ npm install @plasius/player-system
 - training-route recommendations, blocked prerequisite explanations, and crafting-specialization handoff readiness
 - privacy-safe session-data minimization and runtime portability expectations
 - adaptive mission generation, lifecycle transitions, preference-learning signals, and bounded reward decisions
+- accepted guild-quest synchronization with separate guild authority and System annotations
 
 It does not own rendering, world mutation, or institutional authority.
 
@@ -215,6 +216,21 @@ Use `evaluatePlayerSystemMissionReward()` before any host reward application.
 It retains governance preflight evidence and reports `approved`, `modified`, or
 `rejected` with explanation metadata; rejected decisions cannot be surfaced by
 the mission lifecycle.
+
+## Guild-quest synchronization
+
+The inherited rollout flag is
+`isekai.player-system.guild-quests.enabled`. Hosts pass accepted guild-owned
+quest records and current mission references to
+`synchronizePlayerSystemGuildQuests()`. The helper returns no runtime tracking
+when disabled. When enabled, each immutable tracking record keeps the guild
+authority state under `authority` and derived Player System annotations under
+`system`, including mission-tag/route synergy and route conflicts.
+
+The helper sorts records deterministically, rejects duplicate quest or mission
+identifiers, validates timestamps and bounded tag lists, and never mutates or
+awards authoritative guild state. Hosts remain responsible for fetching guild
+truth, persistence, presentation, and any authoritative route or quest action.
 
 ## Runtime NFR Contract
 

@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 - **Added**
-  - (placeholder)
+  - Added feature-flagged guild-quest synchronization with immutable separation between guild-owned accepted state and derived Player System mission-synergy and route-conflict annotations.
 
 - **Changed**
   - (placeholder)
