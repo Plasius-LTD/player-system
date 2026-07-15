@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 - **Added**
-  - (placeholder)
+  - Added curated event-log recall, highlighted moments, achievement progress, projection freshness, and feature/capability-gated read-model helpers under `isekai.player-system.events-achievements.enabled` and `player-system.events-achievements.view`.
 
 - **Changed**
   - (placeholder)
