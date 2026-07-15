@@ -37,8 +37,25 @@ npm install @plasius/player-system
 - privacy-safe session-data minimization and runtime portability expectations
 - adaptive mission generation, lifecycle transitions, preference-learning signals, and bounded reward decisions
 - accepted guild-quest synchronization with separate guild authority and System annotations
+- curated event-log recall, highlighted moments, achievement progress, and projection freshness
 
 It does not own rendering, world mutation, or institutional authority.
+
+## Event Log and Achievement read model
+
+The runtime surface uses the feature flag
+`isekai.player-system.events-achievements.enabled` and capability
+`player-system.events-achievements.view`. Hosts pass curated, privacy-safe
+records to `createPlayerSystemEventAchievementReadModel()`. When either gate is
+closed, the result contains no read-model data.
+
+The read model includes deterministically ordered event-log entries,
+`filterPlayerSystemEventLog()` for bounded recall filters, highlighted moments,
+earned or in-progress achievement summaries, and projection freshness with a
+stale indicator. Event entries expose only player-safe summaries and an
+explicit `player-only` or `player-and-gossip` audience; raw event payloads,
+storage layout, checkpointing, Azure Function scheduling, and achievement rule
+execution remain outside this package.
 
 ## Audio and voice orchestration
 

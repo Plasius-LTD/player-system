@@ -12,6 +12,13 @@ achievement surfaces backed by curated blob JSON datasets.
 - freshness metadata such as last projection time and source lag
 - feature-flag and capability identifiers used by host runtimes
 
+The implemented projection exposes only curated player-safe fields. Event
+entries can be marked `player-only` or `player-and-gossip`; no raw payload,
+hidden truth, storage key, or processing checkpoint is representable. The
+aggregate is available only when both the feature flag
+`isekai.player-system.events-achievements.enabled` and capability
+`player-system.events-achievements.view` are enabled.
+
 ## External Ownership
 
 - raw observed-event capture

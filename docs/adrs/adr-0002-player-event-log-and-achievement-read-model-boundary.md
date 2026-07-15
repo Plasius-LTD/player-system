@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -28,6 +28,13 @@ The package will align with feature flag
 `player-system.events-achievements.view` so host applications can compose the
 runtime surface with the same rollout and discoverability controls used by the
 backend.
+
+The public implementation is a curated projection boundary: event-log entries
+and filters, highlighted moments, earned/in-progress achievement summaries,
+and projection freshness are normalized into immutable snapshots. A closed
+feature flag or capability returns no read-model data. Event entries carry only
+player-safe text and an explicit player or gossip-safe audience; raw payloads
+and hidden truth are not part of the package contract.
 
 ## Consequences
 

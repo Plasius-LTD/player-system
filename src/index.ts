@@ -961,6 +961,99 @@ export interface PlayerSystemGuildQuestSynchronizationResult {
   readonly rationale: readonly string[];
 }
 
+export type PlayerSystemEventLogAudience = "player-only" | "player-and-gossip";
+
+export interface PlayerSystemEventLogEntry {
+  readonly eventId: string;
+  readonly occurredAt: string;
+  readonly category: string;
+  readonly title: string;
+  readonly summary: string;
+  readonly audience: PlayerSystemEventLogAudience;
+  readonly tags: readonly string[];
+}
+
+export interface PlayerSystemEventLogFilter {
+  readonly from?: string;
+  readonly to?: string;
+  readonly category?: string;
+  readonly query?: string;
+  readonly tags?: readonly string[];
+  readonly limit?: number;
+}
+
+export interface PlayerSystemHighlightedMoment {
+  readonly momentId: string;
+  readonly eventId: string;
+  readonly occurredAt: string;
+  readonly title: string;
+  readonly summary: string;
+  readonly reason: string;
+  readonly rank: number;
+}
+
+export type PlayerSystemAchievementState = "earned" | "in-progress";
+
+export interface PlayerSystemAchievementProgress {
+  readonly current: number;
+  readonly target: number;
+  readonly percent: number;
+}
+
+export interface PlayerSystemAchievementSummaryInput {
+  readonly achievementId: string;
+  readonly title: string;
+  readonly summary: string;
+  readonly state: PlayerSystemAchievementState;
+  readonly progress: {
+    readonly current: number;
+    readonly target: number;
+  };
+  readonly earnedAt: string | null;
+  readonly updatedAt: string;
+}
+
+export interface PlayerSystemAchievementSummary
+  extends Omit<PlayerSystemAchievementSummaryInput, "progress"> {
+  readonly progress: PlayerSystemAchievementProgress;
+}
+
+export interface PlayerSystemProjectionFreshnessInput {
+  readonly lastProjectionAt: string;
+  readonly sourceObservedAt?: string | null;
+  readonly sourceLagSeconds: number;
+  readonly staleAfterSeconds: number;
+}
+
+export interface PlayerSystemProjectionFreshness
+  extends PlayerSystemProjectionFreshnessInput {
+  readonly lastProjectionAt: string;
+  readonly sourceObservedAt: string | null;
+  readonly stale: boolean;
+}
+
+export interface PlayerSystemEventAchievementReadModelInput {
+  readonly featureFlagEnabled: boolean;
+  readonly capabilityEnabled: boolean;
+  readonly eventLog: readonly PlayerSystemEventLogEntry[];
+  readonly highlightedMoments: readonly PlayerSystemHighlightedMoment[];
+  readonly achievements: readonly PlayerSystemAchievementSummaryInput[];
+  readonly freshness: PlayerSystemProjectionFreshnessInput;
+}
+
+export interface PlayerSystemEventAchievementReadModel {
+  readonly featureFlagId: typeof PLAYER_SYSTEM_EVENTS_ACHIEVEMENTS_FEATURE_FLAG_ID;
+  readonly capabilityId: typeof PLAYER_SYSTEM_EVENTS_ACHIEVEMENTS_CAPABILITY_ID;
+  readonly enabled: boolean;
+  readonly capabilityAllowed: boolean;
+  readonly available: boolean;
+  readonly eventLog: readonly PlayerSystemEventLogEntry[];
+  readonly highlightedMoments: readonly PlayerSystemHighlightedMoment[];
+  readonly achievements: readonly PlayerSystemAchievementSummary[];
+  readonly freshness: PlayerSystemProjectionFreshness | null;
+  readonly rationale: readonly string[];
+}
+
 export const PLAYER_SYSTEM_PACKAGE = "@plasius/player-system";
 export const PLAYER_SYSTEM_ENV_PREFIX = "PLAYER_SYSTEM";
 export const PLAYER_SYSTEM_PACKAGES_FEATURE_FLAG_ID =
@@ -980,6 +1073,10 @@ export const PLAYER_SYSTEM_GOVERNANCE_FEATURE_FLAG_ID =
   "isekai.player-system.governance.enabled";
 export const PLAYER_SYSTEM_GUILD_QUESTS_FEATURE_FLAG_ID =
   "isekai.player-system.guild-quests.enabled" as const;
+export const PLAYER_SYSTEM_EVENTS_ACHIEVEMENTS_FEATURE_FLAG_ID =
+  "isekai.player-system.events-achievements.enabled" as const;
+export const PLAYER_SYSTEM_EVENTS_ACHIEVEMENTS_CAPABILITY_ID =
+  "player-system.events-achievements.view" as const;
 export const PLAYER_SYSTEM_GOVERNANCE_CONTRACT_VERSION = "2026-06-19.v1";
 
 export const PLAYER_SYSTEM_GOVERNANCE_OVERDRIVE_ELIGIBILITY_CHECKS =
@@ -2007,6 +2104,108 @@ export function synchronizePlayerSystemGuildQuests(
   });
 }
 
+export function filterPlayerSystemEventLog(
+  entries: readonly PlayerSystemEventLogEntry[],
+  filter: PlayerSystemEventLogFilter = {}
+): readonly PlayerSystemEventLogEntry[] {
+  if (!Array.isArray(entries)) {
+    throw new Error("entries must be an array");
+  }
+
+  const normalizedEntries = normalizePlayerSystemEventLogEntries(entries);
+  const normalizedFilter = normalizePlayerSystemEventLogFilter(filter);
+  const query = normalizedFilter.query?.toLocaleLowerCase();
+  const filtered = normalizedEntries
+    .filter((entry) => {
+      if (
+        normalizedFilter.from &&
+        entry.occurredAt < normalizedFilter.from
+      ) {
+        return false;
+      }
+      if (normalizedFilter.to && entry.occurredAt > normalizedFilter.to) {
+        return false;
+      }
+      if (
+        normalizedFilter.category &&
+        entry.category !== normalizedFilter.category
+      ) {
+        return false;
+      }
+      if (
+        normalizedFilter.tags.length > 0 &&
+        !normalizedFilter.tags.every((tag) => entry.tags.includes(tag))
+      ) {
+        return false;
+      }
+      if (
+        query &&
+        !`${entry.title} ${entry.summary}`.toLocaleLowerCase().includes(query)
+      ) {
+        return false;
+      }
+      return true;
+    })
+    .slice(0, normalizedFilter.limit);
+
+  return freezeReadonlyArray(filtered);
+}
+
+export function createPlayerSystemEventAchievementReadModel(
+  input: PlayerSystemEventAchievementReadModelInput
+): PlayerSystemEventAchievementReadModel {
+  assertBoolean(input.featureFlagEnabled, "featureFlagEnabled");
+  assertBoolean(input.capabilityEnabled, "capabilityEnabled");
+  if (!Array.isArray(input.eventLog)) {
+    throw new Error("eventLog must be an array");
+  }
+  if (!Array.isArray(input.highlightedMoments)) {
+    throw new Error("highlightedMoments must be an array");
+  }
+  if (!Array.isArray(input.achievements)) {
+    throw new Error("achievements must be an array");
+  }
+
+  const eventLog = normalizePlayerSystemEventLogEntries(input.eventLog);
+  const highlightedMoments = normalizePlayerSystemHighlightedMoments(
+    input.highlightedMoments
+  );
+  const achievements = normalizePlayerSystemAchievementSummaries(
+    input.achievements
+  );
+  const freshness = normalizePlayerSystemProjectionFreshness(input.freshness);
+  const available = input.featureFlagEnabled && input.capabilityEnabled;
+  const rationale: string[] = [];
+
+  if (!input.featureFlagEnabled) {
+    rationale.push(
+      "Event-log and achievement rollout is disabled by the feature flag."
+    );
+  } else {
+    rationale.push(
+      "Event-log and achievement rollout is enabled by the feature flag."
+    );
+  }
+  if (!input.capabilityEnabled) {
+    rationale.push("The event-log and achievement capability is not enabled.");
+  } else {
+    rationale.push("The event-log and achievement capability is enabled.");
+  }
+
+  return Object.freeze({
+    featureFlagId: PLAYER_SYSTEM_EVENTS_ACHIEVEMENTS_FEATURE_FLAG_ID,
+    capabilityId: PLAYER_SYSTEM_EVENTS_ACHIEVEMENTS_CAPABILITY_ID,
+    enabled: input.featureFlagEnabled,
+    capabilityAllowed: input.capabilityEnabled,
+    available,
+    eventLog: available ? eventLog : Object.freeze([]),
+    highlightedMoments: available ? highlightedMoments : Object.freeze([]),
+    achievements: available ? achievements : Object.freeze([]),
+    freshness: available ? freshness : null,
+    rationale: freezeReadonlyArray(rationale),
+  });
+}
+
 export function createPlayerSystemMission(
   input: CreatePlayerSystemMissionInput
 ): PlayerSystemMission {
@@ -2555,6 +2754,278 @@ function resolvePlayerSystemGuildQuestRouteConflict(
     routeId: authority.routeId,
     conflictingQuestIds: freezeReadonlyArray(conflictingQuestIds),
     conflictingMissionIds: freezeReadonlyArray(conflictingMissionIds),
+  });
+}
+
+const MAX_PLAYER_SYSTEM_EVENT_LOG_ENTRIES = 250;
+const MAX_PLAYER_SYSTEM_HIGHLIGHTED_MOMENTS = 100;
+const MAX_PLAYER_SYSTEM_ACHIEVEMENTS = 100;
+
+function normalizePlayerSystemEventLogEntries(
+  entries: readonly PlayerSystemEventLogEntry[]
+): readonly PlayerSystemEventLogEntry[] {
+  if (entries.length > MAX_PLAYER_SYSTEM_EVENT_LOG_ENTRIES) {
+    throw new Error(
+      `eventLog must contain at most ${MAX_PLAYER_SYSTEM_EVENT_LOG_ENTRIES} entries`
+    );
+  }
+
+  const normalized = entries
+    .map((entry, index) =>
+      normalizePlayerSystemEventLogEntry(entry, `eventLog[${index}]`)
+    )
+    .sort((left, right) => {
+      const occurredAtOrder = right.occurredAt.localeCompare(left.occurredAt);
+      return occurredAtOrder !== 0
+        ? occurredAtOrder
+        : left.eventId.localeCompare(right.eventId);
+    });
+  const identifiers = new Set<string>();
+  for (const entry of normalized) {
+    if (identifiers.has(entry.eventId)) {
+      throw new Error("eventLog must not contain duplicate eventId values");
+    }
+    identifiers.add(entry.eventId);
+  }
+  return freezeReadonlyArray(normalized);
+}
+
+function normalizePlayerSystemEventLogEntry(
+  input: PlayerSystemEventLogEntry,
+  label: string
+): PlayerSystemEventLogEntry {
+  if (input.audience !== "player-only" && input.audience !== "player-and-gossip") {
+    throw new Error(`${label}.audience must be player-only or player-and-gossip`);
+  }
+  if (!Array.isArray(input.tags)) {
+    throw new Error(`${label}.tags must be an array`);
+  }
+
+  return Object.freeze({
+    eventId: assertNonEmptyString(input.eventId, `${label}.eventId`),
+    occurredAt: normalizeRequiredTimestamp(input.occurredAt, `${label}.occurredAt`),
+    category: assertNonEmptyString(input.category, `${label}.category`),
+    title: assertNonEmptyString(input.title, `${label}.title`),
+    summary: assertNonEmptyString(input.summary, `${label}.summary`),
+    audience: input.audience,
+    tags: normalizeGuildQuestTags(input.tags, `${label}.tags`),
+  });
+}
+
+function normalizePlayerSystemEventLogFilter(
+  input: PlayerSystemEventLogFilter
+): Readonly<{
+  readonly from: string | null;
+  readonly to: string | null;
+  readonly category: string | undefined;
+  readonly query: string | undefined;
+  readonly tags: readonly string[];
+  readonly limit: number;
+}> {
+  const from = normalizeTimestamp(input.from, "filter.from");
+  const to = normalizeTimestamp(input.to, "filter.to");
+  if (from && to && from > to) {
+    throw new Error("filter.from must not be later than filter.to");
+  }
+
+  const limit = input.limit === undefined ? 50 : assertPositiveInteger(input.limit, "filter.limit");
+  if (limit > 100) {
+    throw new Error("filter.limit must not exceed 100");
+  }
+
+  return Object.freeze({
+    from,
+    to,
+    category: input.category
+      ? assertNonEmptyString(input.category, "filter.category")
+      : undefined,
+    query: input.query
+      ? assertNonEmptyString(input.query, "filter.query")
+      : undefined,
+    tags: input.tags
+      ? normalizeGuildQuestTags(input.tags, "filter.tags")
+      : Object.freeze([]),
+    limit,
+  });
+}
+
+function normalizePlayerSystemHighlightedMoments(
+  moments: readonly PlayerSystemHighlightedMoment[]
+): readonly PlayerSystemHighlightedMoment[] {
+  if (moments.length > MAX_PLAYER_SYSTEM_HIGHLIGHTED_MOMENTS) {
+    throw new Error(
+      `highlightedMoments must contain at most ${MAX_PLAYER_SYSTEM_HIGHLIGHTED_MOMENTS} entries`
+    );
+  }
+
+  const normalized = moments
+    .map((moment, index) =>
+      Object.freeze({
+        momentId: assertNonEmptyString(
+          moment.momentId,
+          `highlightedMoments[${index}].momentId`
+        ),
+        eventId: assertNonEmptyString(
+          moment.eventId,
+          `highlightedMoments[${index}].eventId`
+        ),
+        occurredAt: normalizeRequiredTimestamp(
+          moment.occurredAt,
+          `highlightedMoments[${index}].occurredAt`
+        ),
+        title: assertNonEmptyString(
+          moment.title,
+          `highlightedMoments[${index}].title`
+        ),
+        summary: assertNonEmptyString(
+          moment.summary,
+          `highlightedMoments[${index}].summary`
+        ),
+        reason: assertNonEmptyString(
+          moment.reason,
+          `highlightedMoments[${index}].reason`
+        ),
+        rank: assertPositiveInteger(
+          moment.rank,
+          `highlightedMoments[${index}].rank`
+        ),
+      })
+    )
+    .sort(
+      (left, right) =>
+        left.rank - right.rank ||
+        right.occurredAt.localeCompare(left.occurredAt) ||
+        left.momentId.localeCompare(right.momentId)
+    );
+  const identifiers = new Set<string>();
+  for (const moment of normalized) {
+    if (identifiers.has(moment.momentId)) {
+      throw new Error(
+        "highlightedMoments must not contain duplicate momentId values"
+      );
+    }
+    identifiers.add(moment.momentId);
+  }
+  return freezeReadonlyArray(normalized);
+}
+
+function normalizePlayerSystemAchievementSummaries(
+  achievements: readonly PlayerSystemAchievementSummaryInput[]
+): readonly PlayerSystemAchievementSummary[] {
+  if (achievements.length > MAX_PLAYER_SYSTEM_ACHIEVEMENTS) {
+    throw new Error(
+      `achievements must contain at most ${MAX_PLAYER_SYSTEM_ACHIEVEMENTS} entries`
+    );
+  }
+
+  const normalized = achievements
+    .map((achievement, index) => {
+      const label = `achievements[${index}]`;
+      if (achievement.state !== "earned" && achievement.state !== "in-progress") {
+        throw new Error(`${label}.state must be earned or in-progress`);
+      }
+      if (!achievement.progress || typeof achievement.progress !== "object") {
+        throw new Error(`${label}.progress must be an object`);
+      }
+
+      const current = assertFiniteNumber(
+        achievement.progress.current,
+        `${label}.progress.current`
+      );
+      const target = assertFiniteNumber(
+        achievement.progress.target,
+        `${label}.progress.target`
+      );
+      if (current < 0) {
+        throw new Error(`${label}.progress.current must not be negative`);
+      }
+      if (target <= 0) {
+        throw new Error(`${label}.progress.target must be greater than zero`);
+      }
+      if (current > target) {
+        throw new Error(`${label}.progress.current must not exceed progress.target`);
+      }
+      if (achievement.state === "earned" && current !== target) {
+        throw new Error(`${label}.earned state requires completed progress`);
+      }
+      if (achievement.state === "earned" && !achievement.earnedAt) {
+        throw new Error(`${label}.earnedAt is required for earned achievements`);
+      }
+      if (achievement.state === "in-progress" && achievement.earnedAt) {
+        throw new Error(`${label}.earnedAt must be null for in-progress achievements`);
+      }
+
+      return Object.freeze({
+        achievementId: assertNonEmptyString(
+          achievement.achievementId,
+          `${label}.achievementId`
+        ),
+        title: assertNonEmptyString(achievement.title, `${label}.title`),
+        summary: assertNonEmptyString(achievement.summary, `${label}.summary`),
+        state: achievement.state,
+        progress: Object.freeze({
+          current,
+          target,
+          percent: Math.round((current / target) * 10000) / 100,
+        }),
+        earnedAt: achievement.earnedAt
+          ? normalizeRequiredTimestamp(achievement.earnedAt, `${label}.earnedAt`)
+          : null,
+        updatedAt: normalizeRequiredTimestamp(
+          achievement.updatedAt,
+          `${label}.updatedAt`
+        ),
+      });
+    })
+    .sort(
+      (left, right) =>
+        right.updatedAt.localeCompare(left.updatedAt) ||
+        left.achievementId.localeCompare(right.achievementId)
+    );
+  const identifiers = new Set<string>();
+  for (const achievement of normalized) {
+    if (identifiers.has(achievement.achievementId)) {
+      throw new Error(
+        "achievements must not contain duplicate achievementId values"
+      );
+    }
+    identifiers.add(achievement.achievementId);
+  }
+  return freezeReadonlyArray(normalized);
+}
+
+function normalizePlayerSystemProjectionFreshness(
+  input: PlayerSystemProjectionFreshnessInput
+): PlayerSystemProjectionFreshness {
+  const sourceLagSeconds = assertFiniteNumber(
+    input.sourceLagSeconds,
+    "sourceLagSeconds"
+  );
+  const staleAfterSeconds = assertFiniteNumber(
+    input.staleAfterSeconds,
+    "staleAfterSeconds"
+  );
+  if (sourceLagSeconds < 0) {
+    throw new Error("sourceLagSeconds must be a finite non-negative number");
+  }
+  if (staleAfterSeconds < 0) {
+    throw new Error("staleAfterSeconds must be a finite non-negative number");
+  }
+
+  return Object.freeze({
+    lastProjectionAt: normalizeRequiredTimestamp(
+      input.lastProjectionAt,
+      "freshness.lastProjectionAt"
+    ),
+    sourceObservedAt: input.sourceObservedAt
+      ? normalizeRequiredTimestamp(
+          input.sourceObservedAt,
+          "freshness.sourceObservedAt"
+        )
+      : null,
+    sourceLagSeconds,
+    staleAfterSeconds,
+    stale: sourceLagSeconds > staleAfterSeconds,
   });
 }
 

@@ -5,6 +5,8 @@ import {
   PLAYER_SYSTEM_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_GOVERNANCE_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_GUILD_QUESTS_FEATURE_FLAG_ID,
+  PLAYER_SYSTEM_EVENTS_ACHIEVEMENTS_CAPABILITY_ID,
+  PLAYER_SYSTEM_EVENTS_ACHIEVEMENTS_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_MISSIONS_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_RUNTIME_NFR_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_RUNTIME_PORTABILITY_FEATURE_FLAG_ID,
@@ -20,6 +22,8 @@ import {
   evaluatePlayerSystemMissionReward,
   generatePlayerSystemMission,
   synchronizePlayerSystemGuildQuests,
+  createPlayerSystemEventAchievementReadModel,
+  filterPlayerSystemEventLog,
   applyPlayerSystemMissionTransition,
   transitionPlayerSystemMission,
   createPlayerSystemTrainingAuthorityHandoff,
@@ -467,6 +471,195 @@ describe("@plasius/player-system", () => {
         missions: [],
       })
     ).toThrow("acceptedQuests[0].state must be accepted");
+  });
+
+  it("creates a curated event-log and achievement read model behind feature and capability gates", () => {
+    const input = {
+      featureFlagEnabled: true,
+      capabilityEnabled: true,
+      eventLog: [
+        {
+          eventId: "event-older",
+          occurredAt: "2026-07-14T23:00:00.000Z",
+          category: "discovery",
+          title: "Found the quiet grove",
+          summary: "The grove offered a safe place to recover.",
+          audience: "player-and-gossip" as const,
+          tags: ["safe", "discovery"],
+        },
+        {
+          eventId: "event-latest",
+          occurredAt: "2026-07-15T00:30:00.000Z",
+          category: "combat",
+          title: "Held the eastern pass",
+          summary: "The pass remained open after a guarded defense.",
+          audience: "player-only" as const,
+          tags: ["defense"],
+        },
+      ],
+      highlightedMoments: [
+        {
+          momentId: "moment-1",
+          eventId: "event-older",
+          occurredAt: "2026-07-14T23:00:00.000Z",
+          title: "A safe discovery",
+          summary: "A calm route was added to the recall surface.",
+          reason: "Useful recovery context",
+          rank: 1,
+        },
+      ],
+      achievements: [
+        {
+          achievementId: "achievement-guard",
+          title: "Steady guardian",
+          summary: "Hold a route without abandoning the party.",
+          state: "in-progress" as const,
+          progress: { current: 2, target: 3 },
+          earnedAt: null,
+          updatedAt: "2026-07-15T00:35:00.000Z",
+        },
+        {
+          achievementId: "achievement-rest",
+          title: "First safe rest",
+          summary: "Find one safe recovery location.",
+          state: "earned" as const,
+          progress: { current: 1, target: 1 },
+          earnedAt: "2026-07-14T23:01:00.000Z",
+          updatedAt: "2026-07-14T23:01:00.000Z",
+        },
+      ],
+      freshness: {
+        lastProjectionAt: "2026-07-15T00:40:00.000Z",
+        sourceObservedAt: "2026-07-15T00:39:45.000Z",
+        sourceLagSeconds: 15,
+        staleAfterSeconds: 60,
+      },
+    };
+
+    const result = createPlayerSystemEventAchievementReadModel(input);
+
+    expect(result.featureFlagId).toBe(
+      PLAYER_SYSTEM_EVENTS_ACHIEVEMENTS_FEATURE_FLAG_ID
+    );
+    expect(result.capabilityId).toBe(
+      PLAYER_SYSTEM_EVENTS_ACHIEVEMENTS_CAPABILITY_ID
+    );
+    expect(result.available).toBe(true);
+    expect(result.eventLog.map((entry) => entry.eventId)).toEqual([
+      "event-latest",
+      "event-older",
+    ]);
+    expect(result.highlightedMoments[0]).toMatchObject({
+      momentId: "moment-1",
+      eventId: "event-older",
+    });
+    expect(result.achievements[0]?.progress.percent).toBeCloseTo(66.67, 2);
+    expect(result.achievements[1]?.state).toBe("earned");
+    expect(result.freshness).toMatchObject({
+      sourceLagSeconds: 15,
+      stale: false,
+    });
+    expect(result.eventLog[0]).not.toHaveProperty("rawPayload");
+    expect(result.eventLog[0]).not.toHaveProperty("hiddenTruth");
+    expect(Object.isFrozen(result)).toBe(true);
+    expect(Object.isFrozen(result.eventLog)).toBe(true);
+    expect(Object.isFrozen(result.eventLog[0])).toBe(true);
+    expect(Object.isFrozen(result.achievements[0]?.progress)).toBe(true);
+  });
+
+  it("filters curated event-log entries without exposing non-player storage concerns", () => {
+    const entries = [
+      {
+        eventId: "event-a",
+        occurredAt: "2026-07-15T00:00:00.000Z",
+        category: "discovery",
+        title: "A quiet path",
+        summary: "A safe route was discovered.",
+        audience: "player-and-gossip" as const,
+        tags: ["safe", "route"],
+      },
+      {
+        eventId: "event-b",
+        occurredAt: "2026-07-15T01:00:00.000Z",
+        category: "combat",
+        title: "A guarded defense",
+        summary: "The route held.",
+        audience: "player-only" as const,
+        tags: ["defense"],
+      },
+    ];
+
+    expect(
+      filterPlayerSystemEventLog(entries, {
+        category: "discovery",
+        tags: ["safe"],
+        query: "quiet",
+        limit: 1,
+      })
+    ).toEqual([{ ...entries[0], tags: ["route", "safe"] }]);
+    expect(
+      filterPlayerSystemEventLog(entries, {
+        from: "2026-07-15T00:30:00.000Z",
+      }).map((entry) => entry.eventId)
+    ).toEqual(["event-b"]);
+  });
+
+  it("fails closed for disabled or unauthorized read-model access and rejects invalid projections", () => {
+    const base = {
+      featureFlagEnabled: true,
+      capabilityEnabled: true,
+      eventLog: [],
+      highlightedMoments: [],
+      achievements: [],
+      freshness: {
+        lastProjectionAt: "2026-07-15T00:40:00.000Z",
+        sourceObservedAt: null,
+        sourceLagSeconds: 0,
+        staleAfterSeconds: 60,
+      },
+    };
+
+    const disabled = createPlayerSystemEventAchievementReadModel({
+      ...base,
+      featureFlagEnabled: false,
+    });
+    expect(disabled.available).toBe(false);
+    expect(disabled.eventLog).toEqual([]);
+    expect(disabled.rationale).toContain(
+      "Event-log and achievement rollout is disabled by the feature flag."
+    );
+
+    const unauthorized = createPlayerSystemEventAchievementReadModel({
+      ...base,
+      capabilityEnabled: false,
+    });
+    expect(unauthorized.available).toBe(false);
+    expect(unauthorized.rationale).toContain(
+      "The event-log and achievement capability is not enabled."
+    );
+
+    expect(() =>
+      createPlayerSystemEventAchievementReadModel({
+        ...base,
+        freshness: { ...base.freshness, sourceLagSeconds: -1 },
+      })
+    ).toThrow("sourceLagSeconds must be a finite non-negative number");
+    expect(() =>
+      createPlayerSystemEventAchievementReadModel({
+        ...base,
+        achievements: [
+          {
+            achievementId: "invalid",
+            title: "Invalid achievement",
+            summary: "The current value exceeds the target.",
+            state: "in-progress",
+            progress: { current: 2, target: 1 },
+            earnedAt: null,
+            updatedAt: "2026-07-15T00:40:00.000Z",
+          },
+        ],
+      })
+    ).toThrow("progress.current must not exceed progress.target");
   });
 
   it("feeds mission decisions into the runtime preference model and enforces lifecycle boundaries", () => {

@@ -15,6 +15,14 @@ Extend `@plasius/player-system` with runtime contracts for:
 The runtime surface should represent the curated datasets produced by the
 blob-backed observed-event pipeline, not the raw event lake itself.
 
+The package exposes `createPlayerSystemEventAchievementReadModel()` for the
+gated aggregate and `filterPlayerSystemEventLog()` for bounded recall. Event
+entries are sorted by occurrence time, highlights by rank, achievements by
+update time, and all returned collections are immutable. Freshness includes
+last projection time, source observation time, source lag, and a stale decision.
+The capability gate is `player-system.events-achievements.view` and the
+rollout flag is `isekai.player-system.events-achievements.enabled`.
+
 The package should expose types and helpers for player-facing consumption while
 excluding:
 
