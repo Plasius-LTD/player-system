@@ -38,6 +38,7 @@ npm install @plasius/player-system
 - adaptive mission generation, lifecycle transitions, preference-learning signals, and bounded reward decisions
 - accepted guild-quest synchronization with separate guild authority and System annotations
 - curated event-log recall, highlighted moments, achievement progress, and projection freshness
+- MCC readiness summaries, focus-aware mission bias, bounded safety warnings, and advisory spellcraft steering
 
 It does not own rendering, world mutation, or institutional authority.
 
@@ -347,3 +348,26 @@ Training-route orchestration is documented in:
 
 - [Player System Training Routing Orchestration](./docs/design/0003-training-routing-orchestration.md)
 - [Player System Mission Lifecycle and Reward Orchestration](./docs/design/0005-mission-lifecycle-and-reward-orchestration.md)
+
+## MCC Guidance and Spellcraft Steering
+
+The inherited feature flag for this work is
+`isekai.player-system.mcc-guidance.enabled`.
+
+`createPlayerSystemMccGuidanceState()` composes a bounded readiness summary,
+authoritative MCC feasibility outcome, thermal/fatigue/chaos/spell-grammar
+warnings, and an optional spellcraft authority handoff. Internalized,
+externalized, and hybrid focus values produce deterministic mission signal
+biases. The result is immutable and reports `ready`, `warning`, `blocked`, or
+`disabled` state without executing authority actions or exposing raw MCC
+telemetry.
+
+MCC and Spell Crafting Systems remain responsible for final feasibility,
+grammar, resource, and consequence decisions. Disable the feature flag to
+remove only the derived guidance surfaces.
+
+This boundary is documented in:
+
+- [MCC Guidance and Spellcraft Steering](./docs/design/0007-mcc-guidance-and-spellcraft-steering.md)
+- [ADR-0009: MCC Guidance and Spellcraft Authority Boundary](./docs/adrs/adr-0009-mcc-guidance-and-spellcraft-authority-boundary.md)
+- [TDR-0005: MCC Guidance and Spellcraft Steering](./docs/tdrs/tdr-0005-mcc-guidance-and-spellcraft-steering.md)

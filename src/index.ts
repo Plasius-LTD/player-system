@@ -455,6 +455,92 @@ export interface PlayerSystemTrainingRoutingInput {
   readonly authorityEligibility: readonly PlayerSystemTrainingAuthorityHandoff[];
 }
 
+export type PlayerSystemMccReadinessBand =
+  | "stable"
+  | "pressured"
+  | "restricted";
+
+export type PlayerSystemMccFeasibilityVerdict =
+  | "feasible"
+  | "conditional"
+  | "blocked";
+
+export type PlayerSystemMccGuidanceStatus =
+  | "disabled"
+  | "ready"
+  | "warning"
+  | "blocked";
+
+export type PlayerSystemMccGuidanceWarningKind =
+  | "thermal"
+  | "fatigue"
+  | "chaos"
+  | "spell-grammar";
+
+export type PlayerSystemMccSpellcraftVerdict =
+  | "recommended"
+  | "conditional"
+  | "blocked";
+
+export interface PlayerSystemMccReadinessSummaryInput {
+  readonly band: PlayerSystemMccReadinessBand;
+  readonly title: string;
+  readonly summary: string;
+}
+
+export interface PlayerSystemMccFeasibilityOutcomeInput {
+  readonly verdict: PlayerSystemMccFeasibilityVerdict;
+  readonly summary: string;
+}
+
+export interface PlayerSystemMccGuidanceWarningInput {
+  readonly kind: PlayerSystemMccGuidanceWarningKind;
+  readonly summary: string;
+  readonly blocking?: boolean;
+}
+
+export interface PlayerSystemMccGuidanceWarning
+  extends PlayerSystemMccGuidanceWarningInput {
+  readonly blocking: boolean;
+}
+
+export interface PlayerSystemMccMissionBias {
+  readonly focus: MccExpressionTrack;
+  readonly preferredSignalKinds: readonly PlayerPreferenceSignalKind[];
+  readonly rationale: string;
+}
+
+export interface PlayerSystemMccSpellcraftGuidance {
+  readonly verdict: PlayerSystemMccSpellcraftVerdict;
+  readonly summary: string;
+  readonly reasons: readonly string[];
+  readonly authorityHandoff: PlayerSystemTrainingAuthorityHandoff | null;
+}
+
+export interface PlayerSystemMccGuidanceInput {
+  readonly featureFlagEnabled: boolean;
+  readonly growthFocus: MccExpressionTrack;
+  readonly readiness: PlayerSystemMccReadinessSummaryInput;
+  readonly feasibility: PlayerSystemMccFeasibilityOutcomeInput;
+  readonly warnings: readonly PlayerSystemMccGuidanceWarningInput[];
+  readonly spellcraftHandoff?: PlayerSystemTrainingAuthorityHandoffInput | null;
+}
+
+export interface PlayerSystemMccGuidanceState {
+  readonly featureFlagId: typeof PLAYER_SYSTEM_MCC_GUIDANCE_FEATURE_FLAG_ID;
+  readonly enabled: boolean;
+  readonly state: PlayerSystemMccGuidanceStatus;
+  readonly growthFocus: MccExpressionTrack;
+  readonly readiness: {
+    readonly band: PlayerSystemMccReadinessBand;
+    readonly title: string;
+    readonly summary: string;
+    readonly warnings: readonly PlayerSystemMccGuidanceWarning[];
+  };
+  readonly missionBias: PlayerSystemMccMissionBias | null;
+  readonly spellcraft: PlayerSystemMccSpellcraftGuidance | null;
+}
+
 export type PlayerSystemGovernanceMode = "child-safe" | "harder-mode";
 
 export type PlayerSystemGovernanceRuntimeSource =
@@ -1067,6 +1153,8 @@ export const PLAYER_SYSTEM_RUNTIME_PORTABILITY_FEATURE_FLAG_ID =
   "isekai.player-system.runtime-portability.enabled";
 export const PLAYER_SYSTEM_TRAINING_ROUTING_FEATURE_FLAG_ID =
   "isekai.player-system.training-routing.enabled";
+export const PLAYER_SYSTEM_MCC_GUIDANCE_FEATURE_FLAG_ID =
+  "isekai.player-system.mcc-guidance.enabled";
 export const PLAYER_SYSTEM_POINTS_STORE_FEATURE_FLAG_ID =
   "isekai.player-system.points-store.enabled";
 export const PLAYER_SYSTEM_GOVERNANCE_FEATURE_FLAG_ID =
@@ -2577,6 +2665,37 @@ const SUPPORTED_TRAINING_AUTHORITIES = Object.freeze([
   "dungeon-crafting",
 ] satisfies PlayerSystemTrainingAuthorityId[]);
 
+const MCC_GUIDANCE_SIGNAL_BIAS_BY_FOCUS: Record<
+  MccExpressionTrack,
+  readonly PlayerPreferenceSignalKind[]
+> = Object.freeze({
+  internalized: Object.freeze([
+    "combat",
+    "exploration",
+  ] satisfies PlayerPreferenceSignalKind[]),
+  externalized: Object.freeze([
+    "crafting",
+    "social",
+  ] satisfies PlayerPreferenceSignalKind[]),
+  hybrid: Object.freeze([
+    "combat",
+    "crafting",
+    "social",
+  ] satisfies PlayerPreferenceSignalKind[]),
+});
+
+const MCC_GUIDANCE_FOCUS_RATIONALE: Record<MccExpressionTrack, string> =
+  Object.freeze({
+    internalized:
+      "Bias guidance toward body-anchored combat and exploration practice before higher-burden external shaping.",
+    externalized:
+      "Bias guidance toward crafting, social preparation, and bounded external shaping with explicit grammar checks.",
+    hybrid:
+      "Alternate reinforcement and projection guidance so the two expression tracks remain coherent rather than fragmenting.",
+  });
+
+const MAX_PLAYER_SYSTEM_MCC_GUIDANCE_WARNINGS = 8;
+
 function normalizeMissionOpportunity(
   input: PlayerSystemMissionOpportunity
 ): PlayerSystemMissionOpportunity {
@@ -3779,6 +3898,251 @@ export function createPlayerSystemTrainingRoutingState(
     blockedPrerequisites,
     trainingAuthority,
     craftingAuthorities,
+  });
+}
+
+function assertMccReadinessBand(
+  value: unknown,
+  label: string
+): PlayerSystemMccReadinessBand {
+  if (
+    value !== "stable" &&
+    value !== "pressured" &&
+    value !== "restricted"
+  ) {
+    throw new Error(`${label} must be a supported MCC readiness band`);
+  }
+
+  return value;
+}
+
+function assertMccFeasibilityVerdict(
+  value: unknown,
+  label: string
+): PlayerSystemMccFeasibilityVerdict {
+  if (value !== "feasible" && value !== "conditional" && value !== "blocked") {
+    throw new Error(`${label} must be a supported MCC feasibility verdict`);
+  }
+
+  return value;
+}
+
+function assertMccGuidanceWarningKind(
+  value: unknown,
+  label: string
+): PlayerSystemMccGuidanceWarningKind {
+  if (
+    value !== "thermal" &&
+    value !== "fatigue" &&
+    value !== "chaos" &&
+    value !== "spell-grammar"
+  ) {
+    throw new Error(`${label} must be a supported MCC warning kind`);
+  }
+
+  return value;
+}
+
+function normalizeMccGuidanceWarnings(
+  warnings: readonly PlayerSystemMccGuidanceWarningInput[]
+): readonly PlayerSystemMccGuidanceWarning[] {
+  if (!Array.isArray(warnings)) {
+    throw new Error("warnings must be an array");
+  }
+
+  if (warnings.length > MAX_PLAYER_SYSTEM_MCC_GUIDANCE_WARNINGS) {
+    throw new Error(
+      `warnings must contain at most ${MAX_PLAYER_SYSTEM_MCC_GUIDANCE_WARNINGS} entries`
+    );
+  }
+
+  return freezeReadonlyArray(
+    warnings.map((warning, index) => {
+      const label = `warnings[${index}]`;
+      const blocking = warning.blocking ?? false;
+      if (warning.blocking !== undefined) {
+        assertBoolean(warning.blocking, `${label}.blocking`);
+      }
+
+      return Object.freeze({
+        kind: assertMccGuidanceWarningKind(warning.kind, `${label}.kind`),
+        summary: assertNonEmptyString(warning.summary, `${label}.summary`),
+        blocking,
+      });
+    })
+  );
+}
+
+function createPlayerSystemMccMissionBias(
+  focus: MccExpressionTrack
+): PlayerSystemMccMissionBias {
+  return Object.freeze({
+    focus,
+    preferredSignalKinds: freezeReadonlyArray([
+      ...MCC_GUIDANCE_SIGNAL_BIAS_BY_FOCUS[focus],
+    ]),
+    rationale: MCC_GUIDANCE_FOCUS_RATIONALE[focus],
+  });
+}
+
+function resolvePlayerSystemMccGuidanceStatus(input: {
+  readonly enabled: boolean;
+  readonly readiness: PlayerSystemMccReadinessBand;
+  readonly feasibility: PlayerSystemMccFeasibilityVerdict;
+  readonly warnings: readonly PlayerSystemMccGuidanceWarning[];
+  readonly handoff: PlayerSystemTrainingAuthorityHandoff | null;
+}): PlayerSystemMccGuidanceStatus {
+  if (!input.enabled) {
+    return "disabled";
+  }
+
+  if (
+    input.readiness === "restricted" ||
+    input.feasibility === "blocked" ||
+    input.warnings.some((warning) => warning.blocking) ||
+    (input.handoff !== null && !input.handoff.eligible)
+  ) {
+    return "blocked";
+  }
+
+  if (
+    input.readiness === "pressured" ||
+    input.feasibility === "conditional" ||
+    input.warnings.length > 0
+  ) {
+    return "warning";
+  }
+
+  return "ready";
+}
+
+function createPlayerSystemMccSpellcraftGuidance(input: {
+  readonly enabled: boolean;
+  readonly focus: MccExpressionTrack;
+  readonly readiness: PlayerSystemMccReadinessBand;
+  readonly feasibility: PlayerSystemMccFeasibilityOutcomeInput;
+  readonly warnings: readonly PlayerSystemMccGuidanceWarning[];
+  readonly authorityHandoff: PlayerSystemTrainingAuthorityHandoff | null;
+}): PlayerSystemMccSpellcraftGuidance | null {
+  if (!input.enabled) {
+    return null;
+  }
+
+  const reasons: string[] = [];
+  if (input.feasibility.verdict !== "feasible") {
+    reasons.push(input.feasibility.summary);
+  }
+  if (input.readiness !== "stable") {
+    reasons.push(
+      input.readiness === "restricted"
+        ? "The current readiness band is restricted; defer committed spellcraft."
+        : "The current readiness band is pressured; keep spellcraft scope narrow."
+    );
+  }
+  for (const warning of input.warnings) {
+    reasons.push(warning.summary);
+  }
+  if (input.authorityHandoff !== null && !input.authorityHandoff.eligible) {
+    reasons.push(input.authorityHandoff.reason);
+  }
+
+  const blocked =
+    input.readiness === "restricted" ||
+    input.feasibility.verdict === "blocked" ||
+    input.warnings.some((warning) => warning.blocking) ||
+    (input.authorityHandoff !== null && !input.authorityHandoff.eligible);
+  const conditional =
+    input.readiness === "pressured" ||
+    input.feasibility.verdict === "conditional" ||
+    input.warnings.length > 0;
+  const verdict: PlayerSystemMccSpellcraftVerdict = blocked
+    ? "blocked"
+    : conditional
+      ? "conditional"
+      : "recommended";
+
+  if (reasons.length === 0) {
+    reasons.push(
+      `The ${input.focus} focus is inside the bounded preview envelope; MCC authority still owns final admission.`
+    );
+  }
+
+  return Object.freeze({
+    verdict,
+    summary:
+      verdict === "blocked"
+        ? "Spellcraft remains preview-only until the authoritative pressure and feasibility gates clear."
+        : verdict === "conditional"
+          ? "Spellcraft remains advisory and should use narrower scope or mitigation before commitment."
+          : "Spellcraft is inside the bounded guidance envelope; final validation remains with MCC and spellcraft authority.",
+    reasons: freezeReadonlyArray(reasons),
+    authorityHandoff: input.authorityHandoff,
+  });
+}
+
+export function createPlayerSystemMccGuidanceState(
+  input: PlayerSystemMccGuidanceInput
+): PlayerSystemMccGuidanceState {
+  assertBoolean(input.featureFlagEnabled, "featureFlagEnabled");
+  if (!isMccExpressionTrack(input.growthFocus)) {
+    throw new Error("growthFocus must be a supported MCC expression track");
+  }
+
+  const readiness = Object.freeze({
+    band: assertMccReadinessBand(input.readiness.band, "readiness.band"),
+    title: assertNonEmptyString(input.readiness.title, "readiness.title"),
+    summary: assertNonEmptyString(input.readiness.summary, "readiness.summary"),
+  });
+  const feasibility = Object.freeze({
+    verdict: assertMccFeasibilityVerdict(
+      input.feasibility.verdict,
+      "feasibility.verdict"
+    ),
+    summary: assertNonEmptyString(
+      input.feasibility.summary,
+      "feasibility.summary"
+    ),
+  });
+  const warnings = normalizeMccGuidanceWarnings(input.warnings);
+  let authorityHandoff: PlayerSystemTrainingAuthorityHandoff | null = null;
+  if (input.spellcraftHandoff !== undefined && input.spellcraftHandoff !== null) {
+    authorityHandoff = createPlayerSystemTrainingAuthorityHandoff(
+      input.spellcraftHandoff
+    );
+    if (authorityHandoff.authorityId !== "spellcraft") {
+      throw new Error("spellcraftHandoff.authorityId must be spellcraft");
+    }
+  }
+
+  const enabled = input.featureFlagEnabled;
+  const state = resolvePlayerSystemMccGuidanceStatus({
+    enabled,
+    readiness: readiness.band,
+    feasibility: feasibility.verdict,
+    warnings,
+    handoff: authorityHandoff,
+  });
+
+  return Object.freeze({
+    featureFlagId: PLAYER_SYSTEM_MCC_GUIDANCE_FEATURE_FLAG_ID,
+    enabled,
+    state,
+    growthFocus: input.growthFocus,
+    readiness: Object.freeze({
+      ...readiness,
+      warnings,
+    }),
+    missionBias: enabled
+      ? createPlayerSystemMccMissionBias(input.growthFocus)
+      : null,
+    spellcraft: createPlayerSystemMccSpellcraftGuidance({
+      enabled,
+      focus: input.growthFocus,
+      readiness: readiness.band,
+      feasibility,
+      warnings,
+      authorityHandoff,
+    }),
   });
 }
 

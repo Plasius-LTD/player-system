@@ -8,3 +8,4 @@
 - [ADR-0006: Core Runtime Session and Module Orchestration](./adr-0006-core-runtime-session-orchestration.md)
 - [ADR-0007: Player System Mission Lifecycle and Bounded Rewards](./adr-0007-player-system-mission-lifecycle-and-bounded-rewards.md)
 - [ADR-0008: Guild-Quest Synchronization and System Annotation Boundary](./adr-0008-guild-quest-synchronization-and-system-annotation-boundary.md)
+- [ADR-0009: MCC Guidance and Spellcraft Authority Boundary](./adr-0009-mcc-guidance-and-spellcraft-authority-boundary.md)
