@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 - **Added**
-  - (placeholder)
+  - Added feature-flagged tutorial progression, stage unlocks, prerequisite-aware lanes, replayable help, and separate reduced-combat coaching orchestration.
 
 - **Changed**
   - (placeholder)

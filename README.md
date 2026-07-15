@@ -39,6 +39,7 @@ npm install @plasius/player-system
 - accepted guild-quest synchronization with separate guild authority and System annotations
 - curated event-log recall, highlighted moments, achievement progress, and projection freshness
 - MCC readiness summaries, focus-aware mission bias, bounded safety warnings, and advisory spellcraft steering
+- tutorial progression, stage-based unlocks, prerequisite-aware lanes, replayable help, and reduced-combat coaching
 
 It does not own rendering, world mutation, or institutional authority.
 
@@ -371,3 +372,28 @@ This boundary is documented in:
 - [MCC Guidance and Spellcraft Steering](./docs/design/0007-mcc-guidance-and-spellcraft-steering.md)
 - [ADR-0009: MCC Guidance and Spellcraft Authority Boundary](./docs/adrs/adr-0009-mcc-guidance-and-spellcraft-authority-boundary.md)
 - [TDR-0005: MCC Guidance and Spellcraft Steering](./docs/tdrs/tdr-0005-mcc-guidance-and-spellcraft-steering.md)
+
+## Tutorial Progression and Combat Coaching
+
+The inherited rollout flag for this work is
+`isekai.player-system.tutorial.enabled`.
+
+`createPlayerSystemTutorialProgressionState()` models an ordered tutorial
+stage, bounded step definitions, completed-step state, prerequisite blockers,
+replayable completed help, and a next-step recommendation. A step is locked
+until its required stage is reached and blocked when any caller-supplied
+prerequisite is unsatisfied. The helper returns immutable snapshots and keeps
+the tutorial package advisory: hosts still own persistence, authoritative
+stage changes, and presentation.
+
+Combat coaching is explicit about its surface. `reduced-combat` coaching can
+be allowed in combat-safe mode without opening a focused pane; `focused-pane`
+coaching is a separate mode and is withheld during combat-safe mode. Disable
+the feature flag to remove tutorial and coaching surfaces without mutating
+session or world state.
+
+This boundary is documented in:
+
+- [Tutorial Progression and Combat Coaching](./docs/design/0008-tutorial-progression-and-combat-coaching.md)
+- [ADR-0010: Tutorial Progression and Coaching Boundary](./docs/adrs/adr-0010-tutorial-progression-and-coaching-boundary.md)
+- [TDR-0006: Tutorial Progression Runtime Surface](./docs/tdrs/tdr-0006-tutorial-progression-runtime-surface.md)
