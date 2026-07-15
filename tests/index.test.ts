@@ -8,6 +8,7 @@ import {
   PLAYER_SYSTEM_EVENTS_ACHIEVEMENTS_CAPABILITY_ID,
   PLAYER_SYSTEM_EVENTS_ACHIEVEMENTS_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_MISSIONS_FEATURE_FLAG_ID,
+  PLAYER_SYSTEM_MCC_GUIDANCE_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_RUNTIME_NFR_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_RUNTIME_PORTABILITY_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_TRAINING_ROUTING_FEATURE_FLAG_ID,
@@ -29,6 +30,7 @@ import {
   createPlayerSystemTrainingAuthorityHandoff,
   createPlayerSystemTrainingInstitutionReadiness,
   createPlayerSystemTrainingRoutingState,
+  createPlayerSystemMccGuidanceState,
   createPlayerSystemPointsStoreState,
   createPlayerSystemPreferenceModelState,
   createPlayerSystemRuntime,
@@ -2193,5 +2195,242 @@ describe("@plasius/player-system", () => {
     ]);
     expect(craftingAuthority.label).toBe("Spellcraft handoff");
     expect(Object.isFrozen(readyInstitution.supportedTracks)).toBe(true);
+  });
+
+  it("composes stable MCC guidance with an internalized mission bias", () => {
+    const guidance = createPlayerSystemMccGuidanceState({
+      featureFlagEnabled: true,
+      growthFocus: "internalized",
+      readiness: {
+        band: "stable",
+        title: "Internalized readiness is stable",
+        summary: "The current posture supports a bounded next step.",
+      },
+      feasibility: {
+        verdict: "feasible",
+        summary: "The authoritative MCC preview accepted the plan.",
+      },
+      warnings: [],
+      spellcraftHandoff: {
+        authorityId: "spellcraft",
+        eligible: true,
+        label: "Spellcraft handoff",
+        handoffSurface: "player-system:spellcraft",
+        reason: "spellcraft-stage-ready",
+      },
+    });
+
+    expect(guidance.featureFlagId).toBe(
+      PLAYER_SYSTEM_MCC_GUIDANCE_FEATURE_FLAG_ID
+    );
+    expect(guidance.state).toBe("ready");
+    expect(guidance.missionBias).toEqual({
+      focus: "internalized",
+      preferredSignalKinds: ["combat", "exploration"],
+      rationale: expect.stringContaining("body-anchored"),
+    });
+    expect(guidance.spellcraft?.verdict).toBe("recommended");
+    expect(guidance.spellcraft?.authorityHandoff?.authorityId).toBe(
+      "spellcraft"
+    );
+  });
+
+  it("turns externalized and hybrid leanings into bounded warning guidance", () => {
+    const externalized = createPlayerSystemMccGuidanceState({
+      featureFlagEnabled: true,
+      growthFocus: "externalized",
+      readiness: {
+        band: "pressured",
+        title: "Externalized readiness is under pressure",
+        summary: "Keep the next commitment narrow.",
+      },
+      feasibility: {
+        verdict: "conditional",
+        summary: "Spell grammar is valid but needs a smaller target burden.",
+      },
+      warnings: [
+        {
+          kind: "thermal",
+          summary: "Thermal load is elevated.",
+        },
+      ],
+    });
+    const hybrid = createPlayerSystemMccGuidanceState({
+      featureFlagEnabled: true,
+      growthFocus: "hybrid",
+      readiness: {
+        band: "stable",
+        title: "Hybrid readiness is stable",
+        summary: "Both channels remain inside the bounded band.",
+      },
+      feasibility: {
+        verdict: "feasible",
+        summary: "The preview is feasible.",
+      },
+      warnings: [],
+    });
+
+    expect(externalized.state).toBe("warning");
+    expect(externalized.missionBias?.preferredSignalKinds).toEqual([
+      "crafting",
+      "social",
+    ]);
+    expect(externalized.spellcraft?.verdict).toBe("conditional");
+    expect(externalized.readiness.warnings[0]).toEqual({
+      kind: "thermal",
+      summary: "Thermal load is elevated.",
+      blocking: false,
+    });
+    expect(hybrid.missionBias?.preferredSignalKinds).toEqual([
+      "combat",
+      "crafting",
+      "social",
+    ]);
+  });
+
+  it("blocks guidance when authoritative feasibility or safety warnings block commitment", () => {
+    const guidance = createPlayerSystemMccGuidanceState({
+      featureFlagEnabled: true,
+      growthFocus: "hybrid",
+      readiness: {
+        band: "restricted",
+        title: "Hybrid readiness is restricted",
+        summary: "Recovery is required before commitment.",
+      },
+      feasibility: {
+        verdict: "blocked",
+        summary: "The authoritative MCC feasibility check rejected the plan.",
+      },
+      warnings: [
+        {
+          kind: "chaos",
+          summary: "Chaos pressure is volatile.",
+          blocking: true,
+        },
+      ],
+    });
+
+    expect(guidance.state).toBe("blocked");
+    expect(guidance.spellcraft?.verdict).toBe("blocked");
+    expect(guidance.spellcraft?.reasons).toEqual(
+      expect.arrayContaining([
+        "The authoritative MCC feasibility check rejected the plan.",
+        "Chaos pressure is volatile.",
+      ])
+    );
+  });
+
+  it("keeps disabled guidance dark while retaining a bounded focus and readiness echo", () => {
+    const guidance = createPlayerSystemMccGuidanceState({
+      featureFlagEnabled: false,
+      growthFocus: "externalized",
+      readiness: {
+        band: "stable",
+        title: "Externalized readiness is stable",
+        summary: "The current posture supports a bounded next step.",
+      },
+      feasibility: {
+        verdict: "feasible",
+        summary: "The authoritative MCC preview accepted the plan.",
+      },
+      warnings: [],
+    });
+
+    expect(guidance.enabled).toBe(false);
+    expect(guidance.state).toBe("disabled");
+    expect(guidance.growthFocus).toBe("externalized");
+    expect(guidance.missionBias).toBeNull();
+    expect(guidance.spellcraft).toBeNull();
+  });
+
+  it("fails closed for invalid MCC outcomes and returns immutable guidance", () => {
+    expect(() =>
+      createPlayerSystemMccGuidanceState({
+        featureFlagEnabled: true,
+        growthFocus: "unknown" as never,
+        readiness: {
+          band: "stable",
+          title: "Stable",
+          summary: "Summary",
+        },
+        feasibility: { verdict: "feasible", summary: "Feasible" },
+        warnings: [],
+      })
+    ).toThrow("growthFocus must be a supported MCC expression track");
+
+    expect(() =>
+      createPlayerSystemMccGuidanceState({
+        featureFlagEnabled: true,
+        growthFocus: "hybrid",
+        readiness: {
+          band: "unknown" as never,
+          title: "Stable",
+          summary: "Summary",
+        },
+        feasibility: { verdict: "feasible", summary: "Feasible" },
+        warnings: [],
+      })
+    ).toThrow("readiness.band must be a supported MCC readiness band");
+
+    expect(() =>
+      createPlayerSystemMccGuidanceState({
+        featureFlagEnabled: true,
+        growthFocus: "hybrid",
+        readiness: {
+          band: "stable",
+          title: "Stable",
+          summary: "Summary",
+        },
+        feasibility: { verdict: "feasible", summary: "Feasible" },
+        warnings: Array.from({ length: 9 }, () => ({
+          kind: "chaos" as const,
+          summary: "Warning",
+        })),
+      })
+    ).toThrow("warnings must contain at most 8 entries");
+
+    expect(() =>
+      createPlayerSystemMccGuidanceState({
+        featureFlagEnabled: true,
+        growthFocus: "hybrid",
+        readiness: {
+          band: "stable",
+          title: "Stable",
+          summary: "Summary",
+        },
+        feasibility: { verdict: "feasible", summary: "Feasible" },
+        warnings: [],
+        spellcraftHandoff: {
+          authorityId: "training",
+          eligible: true,
+          label: "Training handoff",
+          handoffSurface: "player-system:training",
+          reason: "wrong-authority",
+        },
+      })
+    ).toThrow("spellcraftHandoff.authorityId must be spellcraft");
+
+    const inputWarnings = [
+      { kind: "fatigue" as const, summary: "Fatigue is rising." },
+    ];
+    const guidance = createPlayerSystemMccGuidanceState({
+      featureFlagEnabled: true,
+      growthFocus: "internalized",
+      readiness: {
+        band: "stable",
+        title: "Stable",
+        summary: "Summary",
+      },
+      feasibility: { verdict: "feasible", summary: "Feasible" },
+      warnings: inputWarnings,
+    });
+    inputWarnings[0]!.summary = "Mutated warning";
+
+    expect(guidance.readiness.warnings[0]?.summary).toBe("Fatigue is rising.");
+    expect(Object.isFrozen(guidance)).toBe(true);
+    expect(Object.isFrozen(guidance.readiness.warnings)).toBe(true);
+    expect(Object.isFrozen(guidance.missionBias?.preferredSignalKinds)).toBe(
+      true
+    );
   });
 });

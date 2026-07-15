@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 - **Added**
-  - (placeholder)
+  - Added immutable MCC guidance orchestration under `isekai.player-system.mcc-guidance.enabled`, including focus-aware mission bias, bounded readiness and safety warnings, authoritative feasibility composition, and advisory spellcraft handoffs.
 
 - **Changed**
   - (placeholder)
