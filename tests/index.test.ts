@@ -4,6 +4,7 @@ import {
   PLAYER_SYSTEM_PACKAGES_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_GOVERNANCE_FEATURE_FLAG_ID,
+  PLAYER_SYSTEM_GUILD_QUESTS_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_MISSIONS_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_RUNTIME_NFR_FEATURE_FLAG_ID,
   PLAYER_SYSTEM_RUNTIME_PORTABILITY_FEATURE_FLAG_ID,
@@ -18,6 +19,7 @@ import {
   evaluatePlayerSystemRewardPreflight,
   evaluatePlayerSystemMissionReward,
   generatePlayerSystemMission,
+  synchronizePlayerSystemGuildQuests,
   applyPlayerSystemMissionTransition,
   transitionPlayerSystemMission,
   createPlayerSystemTrainingAuthorityHandoff,
@@ -305,6 +307,166 @@ describe("@plasius/player-system", () => {
         "World-state pressure matches the selected mission.",
       ])
     );
+  });
+
+  it("synchronizes accepted guild quests into immutable runtime tracking", () => {
+    const input = {
+      featureFlagEnabled: true,
+      now: "2026-07-15T01:30:00.000Z",
+      acceptedQuests: [
+        {
+          questId: "guild-quest-1",
+          guildId: "guild-wardens",
+          state: "accepted" as const,
+          title: "Secure the eastern pass",
+          summary: "Keep the route open for the guild caravan.",
+          routeId: "eastern-pass",
+          synergyTags: ["escort", "defense"],
+          acceptedAt: "2026-07-15T01:00:00.000Z",
+          updatedAt: "2026-07-15T01:15:00.000Z",
+          sourceVersion: 3,
+        },
+      ],
+      missions: [
+        {
+          missionId: "mission-escort",
+          routeId: "eastern-pass",
+          synergyTags: ["escort", "scouting"],
+        },
+      ],
+    };
+
+    const result = synchronizePlayerSystemGuildQuests(input);
+    const tracking = result.tracking[0];
+
+    expect(result.featureFlagId).toBe(PLAYER_SYSTEM_GUILD_QUESTS_FEATURE_FLAG_ID);
+    expect(result.enabled).toBe(true);
+    expect(tracking?.authority).toMatchObject({
+      questId: "guild-quest-1",
+      guildId: "guild-wardens",
+      state: "accepted",
+      sourceVersion: 3,
+    });
+    expect(tracking?.system.missionSynergy).toEqual([
+      {
+        missionId: "mission-escort",
+        strength: "strong",
+        matchedTags: ["escort"],
+        routeAligned: true,
+      },
+    ]);
+    expect(tracking?.system.routeConflict).toEqual({
+      state: "conflict",
+      routeId: "eastern-pass",
+      conflictingQuestIds: [],
+      conflictingMissionIds: ["mission-escort"],
+    });
+    expect(Object.isFrozen(result)).toBe(true);
+    expect(Object.isFrozen(tracking)).toBe(true);
+    expect(Object.isFrozen(tracking?.authority)).toBe(true);
+    expect(Object.isFrozen(tracking?.system)).toBe(true);
+    expect(Object.isFrozen(tracking?.system.missionSynergy)).toBe(true);
+    expect(Object.isFrozen(tracking?.system.routeConflict)).toBe(true);
+    expect(result).toEqual(synchronizePlayerSystemGuildQuests(input));
+  });
+
+  it("keeps guild-owned state separate from System annotations and detects quest route conflicts", () => {
+    const result = synchronizePlayerSystemGuildQuests({
+      featureFlagEnabled: true,
+      now: "2026-07-15T01:30:00.000Z",
+      acceptedQuests: [
+        {
+          questId: "quest-a",
+          guildId: "guild-a",
+          state: "accepted",
+          title: "Guard the bridge",
+          summary: "Hold the crossing.",
+          routeId: "river-road",
+          synergyTags: ["defense"],
+          acceptedAt: "2026-07-15T01:00:00.000Z",
+          updatedAt: "2026-07-15T01:01:00.000Z",
+          sourceVersion: 1,
+        },
+        {
+          questId: "quest-b",
+          guildId: "guild-b",
+          state: "accepted",
+          title: "Survey the bridge",
+          summary: "Map the crossing.",
+          routeId: "river-road",
+          synergyTags: ["scouting"],
+          acceptedAt: "2026-07-15T01:00:00.000Z",
+          updatedAt: "2026-07-15T01:02:00.000Z",
+          sourceVersion: 2,
+        },
+      ],
+      missions: [],
+    });
+
+    expect(result.tracking.map(({ authority }) => authority.questId)).toEqual([
+      "quest-a",
+      "quest-b",
+    ]);
+    expect(result.tracking[0]?.system.routeConflict.conflictingQuestIds).toEqual([
+      "quest-b",
+    ]);
+    expect(result.tracking[1]?.system.routeConflict.conflictingQuestIds).toEqual([
+      "quest-a",
+    ]);
+    expect(result.tracking[0]?.authority).not.toHaveProperty("system");
+    expect(result.tracking[0]?.system).not.toHaveProperty("guildId");
+  });
+
+  it("fails closed when guild quests are disabled and rejects ambiguous or invalid authority input", () => {
+    const baseQuest = {
+      questId: "quest-disabled",
+      guildId: "guild-1",
+      state: "accepted" as const,
+      title: "A disabled quest",
+      summary: "Not surfaced while rollout is disabled.",
+      routeId: null,
+      synergyTags: [],
+      acceptedAt: "2026-07-15T01:00:00.000Z",
+      updatedAt: "2026-07-15T01:00:00.000Z",
+      sourceVersion: 1,
+    };
+
+    const disabled = synchronizePlayerSystemGuildQuests({
+      featureFlagEnabled: false,
+      now: "2026-07-15T01:30:00.000Z",
+      acceptedQuests: [baseQuest],
+      missions: [],
+    });
+    expect(disabled.featureFlagId).toBe(PLAYER_SYSTEM_GUILD_QUESTS_FEATURE_FLAG_ID);
+    expect(disabled.enabled).toBe(false);
+    expect(disabled.tracking).toEqual([]);
+    expect(disabled.rationale).toContain(
+      "Guild-quest rollout is disabled by the feature flag."
+    );
+
+    expect(() =>
+      synchronizePlayerSystemGuildQuests({
+        featureFlagEnabled: true,
+        acceptedQuests: [baseQuest, { ...baseQuest, sourceVersion: 2 }],
+        missions: [],
+      })
+    ).toThrow("acceptedQuests must not contain duplicate questId values");
+    expect(() =>
+      synchronizePlayerSystemGuildQuests({
+        featureFlagEnabled: true,
+        acceptedQuests: [{ ...baseQuest, updatedAt: "not-a-timestamp" }],
+        missions: [],
+      })
+    ).toThrow("acceptedQuests[0].updatedAt must be a valid ISO timestamp");
+    expect(() =>
+      synchronizePlayerSystemGuildQuests({
+        featureFlagEnabled: true,
+        acceptedQuests: [
+          { ...baseQuest, state: "active" as unknown as "accepted" },
+        ],
+        missions: [],
+      })
+    ).toThrow("acceptedQuests[0].state must be accepted");
   });
 
   it("feeds mission decisions into the runtime preference model and enforces lifecycle boundaries", () => {
