@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 - **Added**
+  - (placeholder)
+
+- **Changed**
+  - (placeholder)
+
+- **Fixed**
+  - (placeholder)
+
+- **Security**
+  - (placeholder)
+
+## [0.1.16] - 2026-07-15
+
+- **Added**
   - Added feature-flagged tutorial progression, stage unlocks, prerequisite-aware lanes, replayable help, and separate reduced-combat coaching orchestration.
 
 - **Changed**
@@ -164,3 +178,4 @@ All notable changes to this project will be documented in this file.
 [0.1.13]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.13
 [0.1.14]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.14
 [0.1.15]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.15
+[0.1.16]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.16
