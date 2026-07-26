@@ -397,3 +397,13 @@ This boundary is documented in:
 - [Tutorial Progression and Combat Coaching](./docs/design/0008-tutorial-progression-and-combat-coaching.md)
 - [ADR-0010: Tutorial Progression and Coaching Boundary](./docs/adrs/adr-0010-tutorial-progression-and-coaching-boundary.md)
 - [TDR-0006: Tutorial Progression Runtime Surface](./docs/tdrs/tdr-0006-tutorial-progression-runtime-surface.md)
+
+<!-- BEGIN PLASIUS RELEASE INTEGRITY -->
+## Release integrity
+
+CI keeps the administrative contributor registry outside Git and npm package
+artifacts using exact, case-normalised path checks. CI runs on approved
+self-hosted runners. Release preparation and npm publication use GitHub-hosted
+runners with Node.js 24.18.0 LTS. CD remains disabled until the npm trusted
+publisher binding is verified and the legacy token fallback is removed.
+<!-- END PLASIUS RELEASE INTEGRITY -->
