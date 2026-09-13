@@ -1,6 +1,6 @@
 {
   "name": "@plasius/player-system",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "description": "Non-rendering Player System orchestration contracts and helpers for Plasius game experiences",
   "type": "module",
   "sideEffects": false,
