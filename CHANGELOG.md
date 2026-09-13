@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 ## Unreleased
 
+- **Added**
+  - (placeholder)
+
+- **Changed**
+  - (placeholder)
+
+- **Fixed**
+  - (placeholder)
+
+- **Security**
+  - (placeholder)
+
+## [0.1.17] - 2026-09-13
+
 ### Changed
 - Consume the verified speech and training 1.0.2 releases while preserving the existing Player System audio gate and explicit speech-policy vetoes.
 
@@ -188,3 +202,4 @@ All notable changes to this project will be documented in this file.
 [0.1.14]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.14
 [0.1.15]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.15
 [0.1.16]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.16
+[0.1.17]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.17
