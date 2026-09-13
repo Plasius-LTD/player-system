@@ -63,6 +63,10 @@ execution remain outside this package.
 
 The inherited feature flag for Player System audio is
 `isekai.player-system.audio.enabled`.
+The speech 1.x adapter translates this established gate to the canonical speech
+key without changing caller configuration. A missing or disabled Player System
+gate remains disabled, and an explicit canonical speech disable also vetoes
+delivery. Caller snapshots are never mutated. See [ADR 0012](docs/adrs/adr-0012-speech-rollout-compatibility.md).
 
 `resolvePlayerSystemAudioRoute()` adapts the shared `@plasius/ai-speech`
 contracts to ambient, focused, and combat-safe runtime contexts. Rollout,

@@ -52,6 +52,7 @@ import {
   resolvePlayerSystemVoiceCommand,
 } from "../src/index.js";
 import {
+  AI_SPEECH_PLAYER_SYSTEM_AUDIO_FLAG_ID,
   createAiSpeechLocalizedCue,
   createAiSpeechNarratedResponse,
 } from "@plasius/ai-speech";
@@ -919,6 +920,38 @@ describe("@plasius/player-system", () => {
       ducking: "music",
     });
     expect(Object.isFrozen(route)).toBe(true);
+  });
+
+  it.each([
+    { legacy: true, canonical: undefined, deliver: true },
+    { legacy: true, canonical: true, deliver: true },
+    { legacy: true, canonical: false, deliver: false },
+    { legacy: false, canonical: true, deliver: false },
+    { legacy: undefined, canonical: true, deliver: false },
+    { legacy: undefined, canonical: undefined, deliver: false },
+  ])("preserves audio rollout authority across speech 1.x: %j", ({ legacy, canonical, deliver }) => {
+    const featureFlags = Object.freeze({
+      [PLAYER_SYSTEM_AUDIO_FEATURE_FLAG_ID]: legacy,
+      [AI_SPEECH_PLAYER_SYSTEM_AUDIO_FLAG_ID]: canonical,
+    });
+    const contract = createAiSpeechNarratedResponse({
+      id: "rollout-compatibility",
+      utteranceId: "rollout-compatibility-v1",
+      locale: "en-GB",
+      priority: "high",
+      ducking: "music",
+      combatSafeDelivery: "condensed",
+    });
+    const route = resolvePlayerSystemAudioRoute({
+      contract,
+      context: { focusMode: "focused", featureFlags },
+    });
+    expect(route.featureFlagId).toBe("isekai.player-system.audio.enabled");
+    expect(route.decision.deliver).toBe(deliver);
+    if (!deliver) {
+      expect(route.decision.reasonCodes).toEqual(["player-system-audio-rollout-disabled"]);
+    }
+    expect(featureFlags[AI_SPEECH_PLAYER_SYSTEM_AUDIO_FLAG_ID]).toBe(canonical);
   });
 
   it("fails closed for suppressed combat-safe cues and disabled rollout", () => {
