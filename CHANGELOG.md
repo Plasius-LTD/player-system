@@ -3,6 +3,10 @@
 All notable changes to this project will be documented in this file.
 ## Unreleased
 
+### Changed
+- Consume the verified speech and training 1.0.2 releases while preserving the existing Player System audio gate and explicit speech-policy vetoes.
+
+
 - **Added**
   - (placeholder)
 

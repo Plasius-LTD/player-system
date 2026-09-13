@@ -4,6 +4,7 @@ import {
   type TrainingInstitutionType,
 } from "@plasius/training";
 import {
+  AI_SPEECH_PLAYER_SYSTEM_AUDIO_FLAG_ID,
   resolveAiSpeechAudioPolicy,
   type AiSpeechAudioContract,
   type AiSpeechAudioFocusMode,
@@ -4615,7 +4616,14 @@ export function resolvePlayerSystemAudioRoute(
     decision: resolveAiSpeechAudioPolicy({
       contract: input.contract,
       focusMode: input.context.focusMode,
-      featureFlags: input.context.featureFlags,
+      featureFlags: {
+        ...input.context.featureFlags,
+        // The existing Player System gate remains authoritative; an explicit
+        // canonical speech veto must still fail closed during migration.
+        [AI_SPEECH_PLAYER_SYSTEM_AUDIO_FLAG_ID]:
+          input.context.featureFlags?.[PLAYER_SYSTEM_AUDIO_FEATURE_FLAG_ID] === true &&
+          input.context.featureFlags?.[AI_SPEECH_PLAYER_SYSTEM_AUDIO_FLAG_ID] !== false,
+      },
       masterMuted: input.context.masterMuted,
       userMuted: input.context.userMuted,
       activeContractIds: input.context.activeContractIds,
