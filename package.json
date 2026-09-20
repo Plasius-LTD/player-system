@@ -89,7 +89,7 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@plasius/ai-speech": "^1.0.2",
-    "@plasius/training": "^1.0.2"
+    "@plasius/ai-speech": "^1.0.3",
+    "@plasius/training": "^1.0.3"
   }
 }
