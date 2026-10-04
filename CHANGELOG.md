@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 ## Unreleased
 
+- **Added**
+  - (placeholder)
+
+- **Changed**
+  - (placeholder)
+
+- **Fixed**
+  - (placeholder)
+
+- **Security**
+  - (placeholder)
+
+## [0.1.20] - 2026-10-04
+
 - Refresh npm dependency lockfile to current supported stable versions (weekly maintenance, 2026-10-04). Refresh published Plasius package baselines after upstream releases.
 
 - **Added**
@@ -239,3 +253,4 @@ All notable changes to this project will be documented in this file.
 [0.1.17]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.17
 [0.1.18]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.18
 [0.1.19]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.19
+[0.1.20]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.20
