@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 ## Unreleased
 
+- Restore trusted-push-only CI on the approved self-hosted runner group, retain
+  strict frozen installs and final package checks, and add runner/admission
+  regression coverage. Include existing release-metadata tests in the regular
+  test suite without changing hosted OIDC publication or runtime APIs.
+
 - **Added**
   - (placeholder)
 
