@@ -406,11 +406,25 @@ This boundary is documented in:
 ## Release integrity
 
 CI keeps the administrative contributor registry outside Git and npm package
-artifacts using exact, case-normalised path checks. CI runs on approved
-GitHub-hosted runners for same-repository pull requests and `main`, with
-package-manager cache finalization disabled; fork PR code is denied.
+artifacts using normalised path metadata without reading record contents.
+Validation runs only for pushes inside this repository, on the approved
+`Public CI - Quarantined` group with fixed `[self-hosted, Linux, X64]` labels.
+The group's workflow allowlist admits `main`; a maintainer may temporarily
+admit an exact reviewed repository branch ref for pre-merge checks and must
+remove it afterwards. Pull requests, fork pushes, manual dispatch and reusable
+workflow calls cannot enter CI. Checkout credentials and npm cache finalization
+are disabled, jobs have bounded timeouts, and a missing runner has no hosted
+fallback. CI retains strict `npm ci`, coverage >= 80%, and final package checks.
 Publication uses the GitHub-hosted `production` job with Node 24 and a pinned
 npm 11.6.2 client. It is token-free and proceeds only while the prepared SHA
 is the exact `main` head after successful push-triggered CI. Do not dispatch CD
 until the npm trusted-publisher binding is verified.
+
+The inherited stored flag `platform.public-artifact-integrity.enabled` stages
+public restoration; it cannot bypass admission, CI or publication gates. Missing,
+disabled or malformed flag state retains containment; enablement permits only
+verified clean artifacts. Rollback disables the affected workflow/distribution
+channel and retains a known clean pointer. Never restore the private record,
+hosted CI, or a removed npm version. See [ADR 0013](docs/adrs/adr-0013-trusted-self-hosted-ci.md)
+and the [release qualification design](docs/design/0009-public-release-qualification.md).
 <!-- END PLASIUS RELEASE INTEGRITY -->

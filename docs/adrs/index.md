@@ -13,3 +13,4 @@
 - [ADR-0011: Hosted OIDC Package Publication](./adr-0011-hosted-oidc-package-publication.md)
 
 - [ADR 0012: Speech rollout compatibility](adr-0012-speech-rollout-compatibility.md)
+- [ADR 0013: Trusted self-hosted CI](adr-0013-trusted-self-hosted-ci.md)

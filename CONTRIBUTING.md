@@ -21,6 +21,11 @@ Participation in this project is governed by our **Code of Conduct** (see `CODE_
 
 This project is open source (see `LICENSE`). To protect contributors and users, we require contributors to agree to our Contributor License Agreement before we can merge PRs. See `legal/INDIVIDUAL_CLA.md` and `legal/CORPORATE_CLA.md`.
 
+Submit signed agreements through the documented private channel. Never add an
+administrative contributor registry or signed personal records to Git or npm
+artifacts. Admission checks inspect path metadata only; public CLA templates
+remain ordinary documentation.
+
 > If your company has special legal needs, contact the maintainers before sending large PRs.
 
 ## Security
@@ -126,6 +131,14 @@ We label approachable tasks as **good first issue** and **help wanted**.
 - [ ] Build passes (`npm run build`)
 - [ ] Docs updated (README, ADR, CHANGELOG if needed)
 - [ ] No real PII in code, tests, or logs
+
+Public CI runs only for trusted pushes in this repository on the approved
+`Public CI - Quarantined` self-hosted runner group. It does not run PR or fork
+code. Before pushing a reviewed branch for qualification, a runner-group
+maintainer must admit its exact workflow/ref, then remove that temporary entry
+after verification. Do not broaden repository/workflow access or add a hosted
+fallback. A push check on the PR head is the review evidence; publication still
+requires fresh successful push CI for the exact prepared `main` SHA.
 
 ---
 
