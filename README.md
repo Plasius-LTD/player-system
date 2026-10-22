@@ -410,8 +410,10 @@ artifacts using normalised path metadata without reading record contents.
 Validation runs only for pushes inside this repository, on the approved
 `Public CI - Quarantined` group with fixed `[self-hosted, Linux, X64]` labels.
 The group's workflow allowlist admits `main`; a maintainer may temporarily
-admit an exact reviewed repository branch ref for pre-merge checks and must
-remove it afterwards. Pull requests, fork pushes, manual dispatch and reusable
+admit a reviewed repository branch for pre-merge checks only after locking it
+against updates, including administrator pushes and fork synchronization.
+Verify that the locked branch still names the reviewed SHA, and remove its
+admission before unlocking or deleting it. Pull requests, fork pushes, manual dispatch and reusable
 workflow calls cannot enter CI. Checkout credentials and npm cache finalization
 are disabled, jobs have bounded timeouts, and a missing runner has no hosted
 fallback. CI retains strict `npm ci`, coverage >= 80%, and final package checks.

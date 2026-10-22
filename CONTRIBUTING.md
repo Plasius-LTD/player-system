@@ -135,8 +135,11 @@ We label approachable tasks as **good first issue** and **help wanted**.
 Public CI runs only for trusted pushes in this repository on the approved
 `Public CI - Quarantined` self-hosted runner group. It does not run PR or fork
 code. Before pushing a reviewed branch for qualification, a runner-group
-maintainer must admit its exact workflow/ref, then remove that temporary entry
-after verification. Do not broaden repository/workflow access or add a hosted
+maintainer must lock its exact branch against updates (including administrators,
+with fork synchronization disabled), verify the reviewed SHA, and admit that
+workflow/ref. Remove the temporary entry before unlocking or deleting the branch.
+Patch only `selected_workflows`; capture and read back both repository IDs and
+workflow refs before and after changes. Do not broaden access or add a hosted
 fallback. A push check on the PR head is the review evidence; publication still
 requires fresh successful push CI for the exact prepared `main` SHA.
 

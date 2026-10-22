@@ -20,8 +20,14 @@ with `[self-hosted, Linux, X64]`. No caller chooses runners; there is no hosted
 fallback, PR trigger, reusable call, manual dispatch or PR-head checkout.
 
 The group admits the repository and `ci.yml@refs/heads/main`. Pre-merge CI may
-use a temporarily admitted, reviewed repository branch ref. Preserve all other
-group entries and remove that entry after qualification. The workflow explicitly
+use a temporarily admitted, reviewed repository branch ref only while branch
+protection locks updates for everyone, including administrators, and forbids
+fork synchronization. Verify the locked branch's SHA before admission. Remove
+the admission before unlocking/deleting or changing that branch; repeat review
+and lock verification for any new commit. Patch only `selected_workflows` and
+read back both repository IDs and workflow refs; resubmitting visibility can
+reset repository selection. Preserve every other repository/group entry and
+remove the temporary entry after qualification. The workflow explicitly
 selects this group, so an unrestricted Default group is not an alternate route
 for these jobs. Organisation-wide runner policy is outside this Task.
 
@@ -44,7 +50,8 @@ releases. No capability or production env override is introduced.
 
 Hosted validation contradicts the Project. Allowing public PR code or
 caller-selected capacity expands trust beyond approved repository pushes.
-Default-group selection does not provide the workflow allowlist boundary.
+Default-group selection does not provide the workflow allowlist boundary. An
+unlocked admitted branch permits code to change after review and is forbidden.
 Keep CI unavailable when approved capacity or its exact workflow ref is absent.
 
 ## Verification and rollback

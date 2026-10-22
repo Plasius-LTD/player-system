@@ -14,10 +14,15 @@ defines the runner decision; ADR 0011 defines hosted OIDC publication.
    tests cover both validation jobs and preserve exact-main hosted OIDC release.
    The regular test include pattern also runs the existing `.test.mjs` release
    version/changelog regressions; they must not be silently omitted.
-3. Push a reviewed repository branch. Admit only its exact `ci.yml` ref to the
-   existing quarantined runner group for qualification, preserving unrelated
-   entries. Verify actual jobs ran on approved self-hosted capacity, then remove
-   the temporary entry. Fork PRs cannot execute on this route.
+3. Review and push a repository branch while it is not admitted. Lock it with
+   `lock_branch=true`, `enforce_admins=true`, `allow_fork_syncing=false`, and
+   verify both protection readback and exact reviewed HEAD. Only then admit its
+   exact `ci.yml` ref to the quarantined group. PATCH only `selected_workflows`;
+   capture and verify both repository IDs and workflow refs before/after, without
+   resubmitting visibility or broadening access. Verify actual jobs ran on
+   approved capacity. Remove admission before unlocking/deleting the branch or
+   pushing a correction; review and lock the corrected head before readmission.
+   Fork PRs cannot execute on this route.
 4. Review and merge the focused PR. Observe genuine successful push CI for the
    merged `main`. Use existing `cd.yml` prepare phase to allocate a new unused
    patch version and promote Unreleased notes. Never edit release sections by hand.
