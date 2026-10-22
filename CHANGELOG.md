@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 ## Unreleased
 
+- **Added**
+  - (placeholder)
+
+- **Changed**
+  - (placeholder)
+
+- **Fixed**
+  - (placeholder)
+
+- **Security**
+  - (placeholder)
+
+## [0.1.23] - 2026-10-22
+
 - Restore trusted-push-only CI on the approved self-hosted runner group, retain
   strict frozen installs and final package checks, and add runner/admission
   regression coverage. Include existing release-metadata tests in the regular
@@ -293,3 +307,4 @@ All notable changes to this project will be documented in this file.
 [0.1.20]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.20
 [0.1.21]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.21
 [0.1.22]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.22
+[0.1.23]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.23
