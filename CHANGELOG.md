@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 ## Unreleased
 
+- **Added**
+  - (placeholder)
+
+- **Changed**
+  - (placeholder)
+
+- **Fixed**
+  - (placeholder)
+
+- **Security**
+  - (placeholder)
+
+## [0.1.25] - 2026-10-28
+
 - Reject invalid runtime deadline, update-budget and failure-policy overrides
   before exposing immutable contracts; retain valid overrides and defaults.
 
@@ -328,3 +342,4 @@ All notable changes to this project will be documented in this file.
 [0.1.22]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.22
 [0.1.23]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.23
 [0.1.24]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.24
+[0.1.25]: https://github.com/Plasius-LTD/player-system/releases/tag/v0.1.25
