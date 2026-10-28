@@ -2640,25 +2640,67 @@ function createPlayerSystemRuntimeState(
 export function createPlayerSystemRuntimeContract(
   input: PlayerSystemRuntimeContractInput = {}
 ): PlayerSystemRuntimeContract {
+  assertRuntimeContractObject(input, "input");
+  for (const field of ["timeoutBudget", "updateBudget", "failurePolicy"] as const) {
+    if (input[field] !== undefined) {
+      assertRuntimeContractObject(input[field], field);
+    }
+  }
+
+  const featureFlagId = input.featureFlagId === undefined
+    ? defaultPlayerSystemRuntimeContract.featureFlagId : input.featureFlagId;
+  assertRuntimeContractString(featureFlagId, "featureFlagId", 256);
+
   const timeoutBudget = {
     ...defaultPlayerSystemRuntimeContract.timeoutBudget,
-    ...input.timeoutBudget,
   };
+  for (const field of ["transitionMs", "idleCancellationMs", "externalHandoffMs"] as const) {
+    const override = input.timeoutBudget?.[field];
+    const value = override === undefined ? timeoutBudget[field] : override;
+    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+      throw new Error(`timeoutBudget.${field} must be a finite positive number`);
+    }
+    timeoutBudget[field] = value;
+  }
+
   const updateBudget = {
     ...defaultPlayerSystemRuntimeContract.updateBudget,
-    ...input.updateBudget,
   };
+  for (const field of ["maxBufferedTransitions", "maxSignalsPerCommit", "maxStateSnapshotsPerTick"] as const) {
+    const override = input.updateBudget?.[field];
+    const value = override === undefined ? updateBudget[field] : override;
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new Error(`updateBudget.${field} must be a non-negative safe integer`);
+    }
+    updateBudget[field] = value;
+  }
+
   const failurePolicy = {
     ...defaultPlayerSystemRuntimeContract.failurePolicy,
-    ...input.failurePolicy,
-    boundedErrorCodes:
-      input.failurePolicy?.boundedErrorCodes ??
-      defaultPlayerSystemRuntimeContract.failurePolicy.boundedErrorCodes,
   };
+  if (input.failurePolicy?.cancellationRequired !== undefined) {
+    failurePolicy.cancellationRequired = input.failurePolicy.cancellationRequired;
+  }
+  if (input.failurePolicy?.retryOwner !== undefined) {
+    failurePolicy.retryOwner = input.failurePolicy.retryOwner;
+  }
+  if (input.failurePolicy?.boundedErrorCodes !== undefined) {
+    failurePolicy.boundedErrorCodes = input.failurePolicy.boundedErrorCodes;
+  }
+  assertBoolean(failurePolicy.cancellationRequired, "failurePolicy.cancellationRequired");
+  if (failurePolicy.retryOwner !== "caller") {
+    throw new Error("failurePolicy.retryOwner must be caller");
+  }
+  const codes = failurePolicy.boundedErrorCodes;
+  if (!Array.isArray(codes) || codes.length < 1 || codes.length > 64) {
+    throw new Error("failurePolicy.boundedErrorCodes must contain 1 to 64 codes");
+  }
+  for (const code of codes) {
+    assertRuntimeContractString(code, "failurePolicy.boundedErrorCodes entry", 128);
+  }
 
   return Object.freeze({
-    featureFlagId:
-      input.featureFlagId ?? defaultPlayerSystemRuntimeContract.featureFlagId,
+    featureFlagId,
     timeoutBudget: Object.freeze(timeoutBudget),
     updateBudget: Object.freeze(updateBudget),
     failurePolicy: Object.freeze({
@@ -2666,6 +2708,18 @@ export function createPlayerSystemRuntimeContract(
       boundedErrorCodes: Object.freeze([...failurePolicy.boundedErrorCodes]),
     }),
   });
+}
+
+function assertRuntimeContractObject(value: unknown, label: string): void {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+}
+
+function assertRuntimeContractString(value: unknown, label: string, maxLength: number): void {
+  if (typeof value !== "string" || value.length > maxLength || value.trim().length === 0) {
+    throw new Error(`${label} must be a non-empty string of at most ${maxLength} characters`);
+  }
 }
 
 export function createPlayerSystemRuntimePortabilityContract(

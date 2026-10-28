@@ -266,6 +266,28 @@ The inherited feature flag for this work is `isekai.player-system.runtime-nfr.en
 - caller-owned retry policy with bounded error codes for degraded paths
 - partial nested overrides for timeout, update, and failure-policy values
 
+Timeouts must be finite positive numbers (fractional milliseconds are valid).
+Update limits must be non-negative safe integers; zero declares no work for that
+operation. Omitted or explicitly `undefined` optional fields retain their
+defaults. Invalid values, including `null`, fail immediately with a field-only
+error that never includes the supplied value. Retry ownership remains `caller`,
+and `cancellationRequired` accepts only booleans.
+
+The flag identifier is a nonblank string of at most 256 UTF-16 code units.
+The error vocabulary contains 1–64 nonblank strings of at most 128 code units
+each. These limits bound validation and copying; sparse arrays are rejected.
+Valid strings and ordering are preserved. The returned contract and its nested
+budgets, policy and copied error-code array are frozen.
+
+These are declarative contracts: hosts enforce cancellation, deadlines and
+update limits using their scheduler. The package performs no remote lookup or
+automatic retry. Hosts evaluate the registered
+`isekai.player-system.runtime-nfr.enabled` control through the governed feature
+store before adopting configured contracts. Disabled, unavailable-store and
+rollback paths use the known default contract; mandatory input validation stays
+active in every path. No capability or local environment gate is needed for
+this package-only boundary. See [ADR 0014](docs/adrs/adr-0014-runtime-contract-validation.md).
+
 ## Runtime Portability Contract
 
 The inherited feature flag for this work is `isekai.player-system.runtime-portability.enabled`.
