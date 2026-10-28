@@ -3,6 +3,9 @@
 All notable changes to this project will be documented in this file.
 ## Unreleased
 
+- Reject invalid runtime deadline, update-budget and failure-policy overrides
+  before exposing immutable contracts; retain valid overrides and defaults.
+
 - **Added**
   - (placeholder)
 
